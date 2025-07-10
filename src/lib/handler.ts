@@ -5,26 +5,37 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Command } from '../types/command';
 import type { Event } from '../types/event';
+import type { MessageContextMenuCommand } from '../types/contextMenuCommand';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+async function* getCommandFiles(dir: string): AsyncGenerator<string> {
+    const dirents = await fs.promises.readdir(dir, { withFileTypes: true });
+    for (const dirent of dirents) {
+        const res = path.resolve(dir, dirent.name);
+        if (dirent.isDirectory()) {
+            yield* getCommandFiles(res);
+        } else if (res.endsWith('.ts')) {
+            yield res;
+        }
+    }
+}
+
 export async function loadCommands(client: Client) {
     const commandsPath = path.join(__dirname, '../commands');
-    const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.ts'));
 
-    for (const file of commandFiles) {
+    for await (const filePath of getCommandFiles(commandsPath)) {
         try {
-            const filePath = path.join(commandsPath, file);
-            const { command } = (await import(filePath)) as { command: Command };
+            const { command } = (await import(filePath)) as { command: Command | MessageContextMenuCommand };
             if ('data' in command && 'execute' in command) {
                 client.commands.set(command.data.name, command);
-                client.logger.debug(`Loaded command: /${command.data.name}`);
+                client.logger.debug(`Loaded command: ${command.data.name}`);
             } else {
                 client.logger.warn(`The command at ${filePath} is missing a required "data" or "execute" property.`);
             }
         } catch (error) {
-            client.logger.error({ err: error, file }, 'Error loading a command file.');
+            client.logger.error({ err: error, file: filePath }, 'Error loading a command file.');
         }
     }
 }

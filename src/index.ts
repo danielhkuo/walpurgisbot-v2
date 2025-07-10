@@ -8,12 +8,13 @@ import { SettingsRepository } from './database/settingsRepository';
 import { NotificationService } from './services/notificationService';
 import { ArchiveSessionManager } from './services/archiveSessionManager';
 import type { Command } from './types/command';
+import type { MessageContextMenuCommand } from './types/contextMenuCommand';
 import { loadCommands, loadEvents } from './lib/handler';
 import type { Database } from 'better-sqlite3';
 
 declare module 'discord.js' {
     export interface Client {
-        commands: Collection<string, Command>;
+        commands: Collection<string, Command | MessageContextMenuCommand>;
         db: Database;
         posts: PostRepository;
         settings: SettingsRepository;

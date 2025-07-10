@@ -14,6 +14,7 @@ export class PostRepository {
     private findByDayStmt: Statement;
     private findMediaByDayStmt: Statement;
     private findByMessageIdStmt: Statement;
+    private findAllWithMediaStmt: Statement;
     private maxDayStmt: Statement;
     private rangeStmt: Statement;
     private postInsertStmt: Statement;
@@ -36,6 +37,14 @@ export class PostRepository {
         this.mediaInsertStmt = this.db.prepare(
             'INSERT INTO media_attachments (post_day, url) VALUES (?, ?)',
         );
+        this.findAllWithMediaStmt = this.db.prepare(`
+            SELECT
+                p.day, p.message_id, p.channel_id, p.user_id, p.timestamp, p.confirmed,
+                m.url AS media_url
+            FROM posts p
+            LEFT JOIN media_attachments m ON p.day = m.post_day
+            ORDER BY p.day ASC
+        `);
 
         // --- DEFINE TRANSACTION ---
         this.createTransaction = this.db.transaction((data: CreatePostInput) => {
@@ -84,16 +93,40 @@ export class PostRepository {
         }
     }
 
+    public findAllWithMedia(): (Post & { media: string[] })[] {
+        const rows = this.findAllWithMediaStmt.all() as (Post & { media_url: string | null })[];
+        const postsMap = new Map<number, Post & { media: string[] }>();
+    
+        for (const row of rows) {
+            // Check if we've already processed this post
+            if (!postsMap.has(row.day)) {
+                try {
+                    // Parse the post data once and store it
+                    const post = PostSchema.parse(row);
+                    postsMap.set(row.day, { ...post, media: [] });
+                } catch (error) {
+                    logger.error({ err: error, row }, 'Invalid post data during export, skipping.');
+                    continue; // Skip this malformed post row
+                }
+            }
+    
+            // Add media URL if it exists
+            const postEntry = postsMap.get(row.day);
+            if (postEntry && row.media_url) {
+                postEntry.media.push(row.media_url);
+            }
+        }
+    
+        // Return an array of the structured post objects
+        return Array.from(postsMap.values());
+    }
+
     public deleteByDay(day: number): boolean {
-        // The foreign key constraint on `media_attachments` with `ON DELETE CASCADE`
-        // handles the deletion of associated media entries automatically.
         const info = this.deleteByDayStmt.run(day);
         return info.changes > 0;
     }
 
     public deleteByMessageId(messageId: string): boolean {
-        // The foreign key constraint on `media_attachments` with `ON DELETE CASCADE`
-        // handles the deletion of associated media entries automatically.
         const info = this.deleteByMessageIdStmt.run(messageId);
         return info.changes > 0;
     }

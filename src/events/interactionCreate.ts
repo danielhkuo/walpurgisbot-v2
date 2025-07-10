@@ -4,7 +4,6 @@ import type { Event } from '../types/event';
 import { config } from '../config';
 
 // Helper function to check for admin role
-// This remains for non-application-command interactions (buttons, modals)
 function isBotAdmin(interaction: Interaction): boolean {
     if (!interaction.member || !interaction.member.roles) return false;
     const roles = interaction.member.roles as GuildMemberRoleManager;
@@ -14,66 +13,105 @@ function isBotAdmin(interaction: Interaction): boolean {
 export const event: Event<Events.InteractionCreate> = {
     name: Events.InteractionCreate,
     async execute(client: Client, interaction: Interaction) {
+        // --- Component Interaction Handling (Buttons, Modals, etc.) ---
         if (interaction.isButton() || interaction.isModalSubmit()) {
             const prefix = interaction.customId.split('_')[0];
-            const archiveActions = ['force', 'confirm', 'ignore', 'add', 'submit'];
+            const archiveActions = ['force', 'confirm', 'ignore', 'add', 'submit', 'delete'];
             if (prefix && archiveActions.includes(prefix)) {
                 if (!isBotAdmin(interaction)) {
-                    await interaction.reply({ content: 'You do not have permission to perform this action.', ephemeral: true });
+                    await interaction.reply({
+                        content: 'You do not have permission to perform this action.',
+                        ephemeral: true,
+                    });
                     return;
                 }
-                
-                if(interaction.isButton()) {
-                    await client.archiveSessionManager.handleInteraction(interaction);
+
+                if (interaction.isButton()) {
+                    // Specific logic for delete buttons which are handled by the command itself
+                    if (!interaction.customId.startsWith('delete')) {
+                        await client.archiveSessionManager.handleInteraction(interaction);
+                    }
                 }
-                if(interaction.isModalSubmit()) {
+                if (interaction.isModalSubmit()) {
                     await client.archiveSessionManager.handleModalSubmit(interaction);
                 }
-                return; // Stop further processing
+                // We return here for session-managed interactions, but let command-based collectors proceed.
+                if (!interaction.customId.startsWith('delete')) {
+                    return;
+                }
             }
         }
 
-        // --- Command and Autocomplete Handling ---
-        if (interaction.isChatInputCommand()) {
+        // --- Application Command Handling ---
+        if (interaction.isChatInputCommand() || interaction.isMessageContextMenuCommand()) {
             const command = client.commands.get(interaction.commandName);
             if (!command) {
                 client.logger.warn({ commandName: interaction.commandName }, 'No command found.');
-                await interaction.reply({
-                    content: `No command matching \`/${interaction.commandName}\` was found.`,
-                    ephemeral: true,
-                });
+                // Context menus can't be "mistyped", so no reply is necessary.
+                if (interaction.isChatInputCommand()) {
+                    await interaction.reply({
+                        content: `No command matching \`/${interaction.commandName}\` was found.`,
+                        ephemeral: true,
+                    });
+                }
                 return;
             }
 
             try {
-                // The `isBotAdmin` check for slash commands like 'delete' is no longer needed here.
-                // Permissions are now handled declaratively via setDefaultMemberPermissions.
-                // We keep the check for any commands that might still rely on it.
+                // Declarative permissions (`setDefaultMemberPermissions`) are the primary check.
+                // This is a fallback/belt-and-suspenders for commands without it.
                 if (['settings', 'manual-archive'].includes(command.data.name)) {
                     if (!isBotAdmin(interaction)) {
-                         await interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true });
-                         return;
+                        await interaction.reply({
+                            content: 'You do not have permission to use this command.',
+                            ephemeral: true,
+                        });
+                        return;
                     }
                 }
-                await command.execute(interaction, client);
+
+                // Type-safe command execution
+                if (interaction.isChatInputCommand() && 'description' in command.data) {
+                    await (command as import('../types/command').Command).execute(interaction, client);
+                } else if (interaction.isMessageContextMenuCommand() && !('description' in command.data)) {
+                    await (command as import('../types/contextMenuCommand').MessageContextMenuCommand).execute(
+                        interaction,
+                        client,
+                    );
+                } else {
+                    client.logger.warn(
+                        { commandName: interaction.commandName, interactionType: interaction.type },
+                        'Command and interaction type mismatch.',
+                    );
+                    // Optionally reply to the user
+                }
             } catch (error) {
                 client.logger.error({ err: error, commandName: interaction.commandName }, 'Error executing command.');
                 if (interaction.replied || interaction.deferred) {
-                    await interaction.followUp({ content: 'There was an error while executing this command!', ephemeral: true });
+                    await interaction.followUp({
+                        content: 'There was an error while executing this command!',
+                        ephemeral: true,
+                    });
                 } else {
-                    await interaction.reply({ content: 'There was an error while executing this command!', ephemeral: true });
+                    await interaction.reply({
+                        content: 'There was an error while executing this command!',
+                        ephemeral: true,
+                    });
                 }
             }
         } else if (interaction.isAutocomplete()) {
             const command = client.commands.get(interaction.commandName);
-            if (!command || !command.autocomplete) {
-                client.logger.warn({ commandName: interaction.commandName }, 'No autocomplete handler found for command.');
+            if (!command) {
+                client.logger.warn({ commandName: interaction.commandName }, 'No autocomplete handler for command.');
                 return;
             }
-            try {
-                await command.autocomplete(interaction);
-            } catch (error) {
-                client.logger.error({ err: error, commandName: interaction.commandName }, 'Error in autocomplete handler.');
+            // Ensure the command is a slash command with an autocomplete handler
+            if ('autocomplete' in command && command.autocomplete) {
+                try {
+                    await command.autocomplete(interaction);
+                } catch (error) {
+                    client.logger.error({ err: error, commandName: interaction.commandName }, 'Error in autocomplete handler.');
+                }
             }
         }
     },

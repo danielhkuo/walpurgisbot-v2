@@ -10,6 +10,7 @@ import {
 import type { ChatInputCommandInteraction, Client, ButtonInteraction } from 'discord.js';
 import type { Command } from '../types/command';
 import type { Post } from '../types/database';
+import { presentDeleteConfirmation } from '../lib/interaction-helpers/deleteConfirmation';
 
 const MESSAGE_LINK_REGEX = /channels\/\d+\/\d+\/(\d+)/;
 
@@ -50,8 +51,7 @@ async function handleDeleteByDay(interaction: ChatInputCommandInteraction, clien
     });
 
     collector.on('collect', async (i: ButtonInteraction) => {
-        // Custom ID format: confirm_delete_day_{day_number}
-        const collectedDay = parseInt(i.customId?.split('_')[3] ?? '0', 10);
+        const collectedDay = parseInt(i.customId.split('_')[3] ?? '0', 10);
 
         if (i.customId.startsWith('confirm_delete_day')) {
             const success = client.posts.deleteByDay(collectedDay);
@@ -105,70 +105,14 @@ async function handleDeleteByLink(interaction: ChatInputCommandInteraction, clie
 
     const affectedDays = associatedPosts.map(p => p.day);
 
-    const confirmButton = new ButtonBuilder()
-        .setCustomId(`confirm_delete_link_${messageId}`)
-        .setLabel('Yes, Delete')
-        .setStyle(ButtonStyle.Danger);
-
-    const cancelButton = new ButtonBuilder()
-        .setCustomId(`cancel_delete_link_${messageId}`)
-        .setLabel('No, Cancel')
-        .setStyle(ButtonStyle.Secondary);
-
-    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(confirmButton, cancelButton);
-
-    const reply = await interaction.reply({
-        content: `This message is associated with Day(s) **${affectedDays.join(
-            ', ',
-        )}**. Are you sure you want to delete all related archive entries?`,
-        components: [row],
-        ephemeral: true,
-    });
-
-    const collector = reply.createMessageComponentCollector({
-        componentType: ComponentType.Button,
-        filter: i => i.user.id === interaction.user.id,
-        time: 30_000, // 30 seconds
-    });
-
-    collector.on('collect', async (i: ButtonInteraction) => {
-        // Custom ID format: confirm_delete_link_{message_id}
-        const collectedMessageId = i.customId.split('_')[3];
-
-        if (i.customId.startsWith('confirm_delete_link')) {
-            const success = client.posts.deleteByMessageId(collectedMessageId ?? '');
-            if (success) {
-                await i.update({
-                    content: `✅ Deletion confirmed. The archive entries for Day(s) **${affectedDays.join(
-                        ', ',
-                    )}** have been removed.`,
-                    components: [],
-                });
-            } else {
-                await i.update({
-                    content: '❌ Error: Failed to delete the archive entries. Check the logs.',
-                    components: [],
-                });
-            }
-        } else if (i.customId.startsWith('cancel_delete_link')) {
-            await i.update({ content: 'Deletion cancelled.', components: [] });
-        }
-    });
-
-    collector.on('end', async collected => {
-        if (collected.size === 0) {
-            await interaction.editReply({
-                content: 'Confirmation timed out. Deletion cancelled.',
-                components: [],
-            });
-        }
-    });
+    // Delegate the entire confirmation flow to the shared helper function.
+    await presentDeleteConfirmation(interaction, client, messageId, affectedDays);
 }
 
 export const command: Command = {
     data: new SlashCommandBuilder()
         .setName('delete')
-        .setDescription("Deletes an archive entry after confirmation.")
+        .setDescription('Deletes an archive entry after confirmation.')
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
         .setDMPermission(false)
         .addSubcommand(subcommand =>
@@ -182,7 +126,7 @@ export const command: Command = {
         .addSubcommand(subcommand =>
             subcommand
                 .setName('link')
-                .setDescription("Deletes an archive entry using the original message link.")
+                .setDescription('Deletes an archive entry using the original message link.')
                 .addStringOption(option =>
                     option
                         .setName('message_link')
