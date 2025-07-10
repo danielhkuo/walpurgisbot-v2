@@ -136,7 +136,7 @@ async function handleDeleteByLink(interaction: ChatInputCommandInteraction, clie
         const collectedMessageId = i.customId.split('_')[3];
 
         if (i.customId.startsWith('confirm_delete_link')) {
-            const success = client.posts.deleteByMessageId(collectedMessageId);
+            const success = client.posts.deleteByMessageId(collectedMessageId ?? '');
             if (success) {
                 await i.update({
                     content: `✅ Deletion confirmed. The archive entries for Day(s) **${affectedDays.join(
