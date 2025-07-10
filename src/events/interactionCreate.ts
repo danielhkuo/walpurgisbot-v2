@@ -4,6 +4,7 @@ import type { Event } from '../types/event';
 import { config } from '../config';
 
 // Helper function to check for admin role
+// This remains for non-application-command interactions (buttons, modals)
 function isBotAdmin(interaction: Interaction): boolean {
     if (!interaction.member || !interaction.member.roles) return false;
     const roles = interaction.member.roles as GuildMemberRoleManager;
@@ -45,8 +46,10 @@ export const event: Event<Events.InteractionCreate> = {
             }
 
             try {
-                // For admin commands, add an extra permission check
-                if (['settings', 'delete', 'manual-archive'].includes(command.data.name)) {
+                // The `isBotAdmin` check for slash commands like 'delete' is no longer needed here.
+                // Permissions are now handled declaratively via setDefaultMemberPermissions.
+                // We keep the check for any commands that might still rely on it.
+                if (['settings', 'manual-archive'].includes(command.data.name)) {
                     if (!isBotAdmin(interaction)) {
                          await interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true });
                          return;

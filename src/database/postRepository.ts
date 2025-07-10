@@ -7,11 +7,15 @@ import logger from '../logger';
 export class PostRepository {
     private db: Database;
     private createTransaction: (data: CreatePostInput) => { post: Post; media: MediaAttachment[] } | null;
-    private deleteStatement: Statement;
-    private findByDayStatement: Statement;
-    private findMediaByDayStatement: Statement;
-    private maxDayStatement: Statement;
-    private rangeStatement: Statement;
+
+    // Statements
+    private deleteByDayStmt: Statement;
+    private deleteByMessageIdStmt: Statement;
+    private findByDayStmt: Statement;
+    private findMediaByDayStmt: Statement;
+    private findByMessageIdStmt: Statement;
+    private maxDayStmt: Statement;
+    private rangeStmt: Statement;
     private postInsertStmt: Statement;
     private mediaInsertStmt: Statement;
 
@@ -19,11 +23,13 @@ export class PostRepository {
         this.db = db;
 
         // --- PREPARE STATEMENTS ---
-        this.deleteStatement = this.db.prepare('DELETE FROM posts WHERE day = ?');
-        this.findByDayStatement = this.db.prepare('SELECT * FROM posts WHERE day = ?');
-        this.findMediaByDayStatement = this.db.prepare('SELECT * FROM media_attachments WHERE post_day = ?');
-        this.maxDayStatement = this.db.prepare('SELECT MAX(day) as maxDay FROM posts');
-        this.rangeStatement = this.db.prepare('SELECT day FROM posts WHERE day BETWEEN ? AND ? ORDER BY day ASC');
+        this.deleteByDayStmt = this.db.prepare('DELETE FROM posts WHERE day = ?');
+        this.deleteByMessageIdStmt = this.db.prepare('DELETE FROM posts WHERE message_id = ?');
+        this.findByDayStmt = this.db.prepare('SELECT * FROM posts WHERE day = ?');
+        this.findMediaByDayStmt = this.db.prepare('SELECT * FROM media_attachments WHERE post_day = ?');
+        this.findByMessageIdStmt = this.db.prepare('SELECT * FROM posts WHERE message_id = ?');
+        this.maxDayStmt = this.db.prepare('SELECT MAX(day) as maxDay FROM posts');
+        this.rangeStmt = this.db.prepare('SELECT day FROM posts WHERE day BETWEEN ? AND ? ORDER BY day ASC');
         this.postInsertStmt = this.db.prepare(
             'INSERT INTO posts (day, message_id, channel_id, user_id, timestamp, confirmed) VALUES (@day, @message_id, @channel_id, @user_id, @timestamp, 1)',
         );
@@ -53,10 +59,10 @@ export class PostRepository {
     }
 
     public findByDay(day: number): { post: Post; media: MediaAttachment[] } | null {
-        const postRow = this.findByDayStatement.get(day);
+        const postRow = this.findByDayStmt.get(day);
         if (!postRow) return null;
 
-        const mediaRows = this.findMediaByDayStatement.all(day);
+        const mediaRows = this.findMediaByDayStmt.all(day);
 
         try {
             const post = PostSchema.parse(postRow);
@@ -67,20 +73,38 @@ export class PostRepository {
             return null;
         }
     }
+    
+    public findPostsByMessageId(messageId: string): Post[] {
+        const rows = this.findByMessageIdStmt.all(messageId);
+        try {
+            return PostSchema.array().parse(rows);
+        } catch (error) {
+            logger.error({ err: error, messageId }, 'Database data failed validation for messageId query.');
+            return [];
+        }
+    }
 
     public deleteByDay(day: number): boolean {
-        const info = this.deleteStatement.run(day);
-        // ON DELETE CASCADE handles the media_attachments table automatically.
+        // The foreign key constraint on `media_attachments` with `ON DELETE CASCADE`
+        // handles the deletion of associated media entries automatically.
+        const info = this.deleteByDayStmt.run(day);
+        return info.changes > 0;
+    }
+
+    public deleteByMessageId(messageId: string): boolean {
+        // The foreign key constraint on `media_attachments` with `ON DELETE CASCADE`
+        // handles the deletion of associated media entries automatically.
+        const info = this.deleteByMessageIdStmt.run(messageId);
         return info.changes > 0;
     }
 
     public getMaxDay(): number | null {
-        const row = this.maxDayStatement.get();
+        const row = this.maxDayStmt.get();
         return MaxDaySchema.parse(row).maxDay;
     }
 
     public getArchivedDaysInRange(start: number, end: number): number[] {
-        const rows = this.rangeStatement.all(start, end);
+        const rows = this.rangeStmt.all(start, end);
         return DayListSchema.parse(rows).map(row => row.day);
     }
 }
