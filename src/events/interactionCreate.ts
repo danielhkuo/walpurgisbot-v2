@@ -1,7 +1,8 @@
 // src/events/interactionCreate.ts
 import { Events, type Interaction, type Client } from 'discord.js';
+import type { Event } from '../types/event';
 
-export const event = {
+export const event: Event<Events.InteractionCreate> = {
     name: Events.InteractionCreate,
     execute: async (client: Client, interaction: Interaction) => {
         if (!interaction.isChatInputCommand()) return;

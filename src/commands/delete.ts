@@ -49,6 +49,11 @@ export const command: Command = {
             time: 30_000, // 30 seconds
         });
 
+        // NOTE: This in-memory collector is not robust against bot restarts. If the bot
+        // restarts after the confirmation is sent but before a button is clicked, the
+        // interaction will fail. Given the low frequency of this command, this is an
+        // acceptable trade-off against the complexity of a persistent job queue.
+
         collector.on('collect', async (i: ButtonInteraction) => {
             if (i.customId === `confirm_delete_${day}`) {
                 const success = client.posts.deleteByDay(day);

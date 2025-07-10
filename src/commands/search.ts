@@ -32,12 +32,20 @@ export const command: Command = {
             .setImage(media[0]?.url ?? null) // Display the first image in the embed
             .setTimestamp(post.timestamp * 1000);
 
-        // If there are more images, list them in the description or fields
+        // If there are more images, list them in a field, truncating if necessary.
         if (media.length > 1) {
-            const extraMediaLinks = media
-                .slice(1)
+            const MAX_LINKS_IN_FIELD = 5;
+            const otherMedia = media.slice(1);
+            let extraMediaLinks = otherMedia
+                .slice(0, MAX_LINKS_IN_FIELD)
                 .map((m, i) => `[Media ${i + 2}](${m.url})`)
                 .join(' | ');
+            
+            const remaining = otherMedia.length - MAX_LINKS_IN_FIELD;
+            if (remaining > 0) {
+                extraMediaLinks += ` | and ${remaining} more...`;
+            }
+
             embed.addFields({ name: 'Additional Media', value: extraMediaLinks });
         }
 

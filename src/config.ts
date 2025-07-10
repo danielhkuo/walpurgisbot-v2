@@ -9,6 +9,8 @@ const envSchema = z.object({
     CLIENT_ID: z.string().min(1, { message: "CLIENT_ID is required" }),
     GUILD_ID: z.string().min(1, { message: "GUILD_ID is required for dev" }),
     JOHAN_USER_ID: z.string().min(1, { message: "JOHAN_USER_ID is required" }),
+    DATABASE_PATH: z.string().default('walpurgis.db'),
+    COOLDOWN_HOURS: z.coerce.number().int().positive().default(12),
 });
 
 let validatedConfig;

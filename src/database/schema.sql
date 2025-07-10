@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS posts (
     channel_id  TEXT NOT NULL,
     user_id     TEXT NOT NULL,
     timestamp   INTEGER NOT NULL,
-    confirmed   INTEGER NOT NULL DEFAULT 1 -- Using INTEGER for boolean (0 or 1)
+    confirmed   BOOLEAN NOT NULL DEFAULT true
 );
 
 -- Stores media attachments, linking back to a post.
@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS posts (
 CREATE TABLE IF NOT EXISTS media_attachments (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     post_day    INTEGER NOT NULL,
-    url         TEXT NOT NULL,
+    url         TEXT NOT NULL, -- Discord CDN URLs are generally long, so TEXT is appropriate.
     FOREIGN KEY (post_day) REFERENCES posts(day) ON DELETE CASCADE
 );
 

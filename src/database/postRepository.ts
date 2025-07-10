@@ -1,6 +1,6 @@
 // src/database/postRepository.ts
 import type { Database, Statement } from 'better-sqlite3';
-import { PostSchema, MediaAttachmentSchema } from '../types/database';
+import { PostSchema, MediaAttachmentSchema, MaxDaySchema, DayListSchema } from '../types/database';
 import type { Post, MediaAttachment, CreatePostInput } from '../types/database';
 import logger from '../logger';
 
@@ -12,6 +12,8 @@ export class PostRepository {
     private findMediaByDayStatement: Statement;
     private maxDayStatement: Statement;
     private rangeStatement: Statement;
+    private postInsertStmt: Statement;
+    private mediaInsertStmt: Statement;
 
     constructor(db: Database) {
         this.db = db;
@@ -22,13 +24,16 @@ export class PostRepository {
         this.findMediaByDayStatement = this.db.prepare('SELECT * FROM media_attachments WHERE post_day = ?');
         this.maxDayStatement = this.db.prepare('SELECT MAX(day) as maxDay FROM posts');
         this.rangeStatement = this.db.prepare('SELECT day FROM posts WHERE day BETWEEN ? AND ? ORDER BY day ASC');
+        this.postInsertStmt = this.db.prepare(
+            'INSERT INTO posts (day, message_id, channel_id, user_id, timestamp, confirmed) VALUES (@day, @message_id, @channel_id, @user_id, @timestamp, 1)',
+        );
+        this.mediaInsertStmt = this.db.prepare(
+            'INSERT INTO media_attachments (post_day, url) VALUES (?, ?)',
+        );
 
         // --- DEFINE TRANSACTION ---
         this.createTransaction = this.db.transaction((data: CreatePostInput) => {
-            const postInsertStmt = this.db.prepare(
-                'INSERT INTO posts (day, message_id, channel_id, user_id, timestamp, confirmed) VALUES (@day, @message_id, @channel_id, @user_id, @timestamp, 1)',
-            );
-            postInsertStmt.run({
+            this.postInsertStmt.run({
                 day: data.day,
                 message_id: data.message_id,
                 channel_id: data.channel_id,
@@ -36,11 +41,8 @@ export class PostRepository {
                 timestamp: data.timestamp,
             });
 
-            const mediaInsertStmt = this.db.prepare(
-                'INSERT INTO media_attachments (post_day, url) VALUES (?, ?)',
-            );
             for (const url of data.mediaUrls) {
-                mediaInsertStmt.run(data.day, url);
+                this.mediaInsertStmt.run(data.day, url);
             }
             return this.findByDay(data.day);
         });
@@ -73,12 +75,12 @@ export class PostRepository {
     }
 
     public getMaxDay(): number | null {
-        const result = this.maxDayStatement.get() as { maxDay: number | null };
-        return result?.maxDay ?? null;
+        const row = this.maxDayStatement.get();
+        return MaxDaySchema.parse(row).maxDay;
     }
 
     public getArchivedDaysInRange(start: number, end: number): number[] {
-        const rows = this.rangeStatement.all(start, end) as { day: number }[];
-        return rows.map(row => row.day);
+        const rows = this.rangeStatement.all(start, end);
+        return DayListSchema.parse(rows).map(row => row.day);
     }
 }

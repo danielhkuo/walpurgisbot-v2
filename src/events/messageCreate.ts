@@ -2,25 +2,29 @@
 import { Events, Message, Client } from 'discord.js';
 import { config } from '../config';
 import type { CreatePostInput } from '../types/database';
+import type { Event } from '../types/event';
 
-// In-memory cooldown state (a more robust solution might use a database or Redis, but this is fine for now)
-let lastArchiveTimestamp = 0;
-const COOLDOWN_HOURS = 12;
-
-export const event = {
+export const event: Event<Events.MessageCreate> = {
     name: Events.MessageCreate,
     execute: async (client: Client, message: Message) => {
         // --- 1. Initial Filtering ---
         if (message.author.id !== config.JOHAN_USER_ID) return; // Not the target user
         if (message.attachments.size === 0) return; // No media attached
 
-        // --- 2. Cooldown Check ---
-        const now = Date.now();
-        const hoursSinceLastArchive = (now - lastArchiveTimestamp) / (1000 * 60 * 60);
-        if (hoursSinceLastArchive < COOLDOWN_HOURS) {
-            client.logger.info({ messageId: message.id }, `Message ignored due to active cooldown.`);
-            // Optionally, you could DM the user about the cooldown.
-            return;
+        // --- 2. Cooldown Check (Robust against restarts) ---
+        const maxDay = client.posts.getMaxDay();
+        if (maxDay) {
+            const latestPost = client.posts.findByDay(maxDay);
+            if (latestPost) {
+                // Timestamp is in seconds, convert to milliseconds for comparison
+                const hoursSinceLastArchive =
+                    (Date.now() - latestPost.post.timestamp * 1000) / (1000 * 60 * 60);
+
+                if (hoursSinceLastArchive < config.COOLDOWN_HOURS) {
+                    client.logger.info({ messageId: message.id }, 'Message ignored due to active cooldown.');
+                    return;
+                }
+            }
         }
 
         // --- 3. Extract Day Number using Regex ---
@@ -68,8 +72,7 @@ export const event = {
         if (result) {
             client.logger.info({ day, messageId: message.id }, 'Successfully auto-archived post.');
             await message.react('✅');
-            // Update the cooldown timestamp
-            lastArchiveTimestamp = now;
+            // Cooldown is now handled by checking the last post's timestamp, so no in-memory state to update.
         } else {
             client.logger.error({ day, messageId: message.id }, 'Failed to auto-archive post.');
             await message.react('❌');

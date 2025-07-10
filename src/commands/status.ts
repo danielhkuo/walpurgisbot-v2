@@ -35,21 +35,24 @@ export const command: Command = {
             return;
         }
 
-        const archivedDays = new Set(client.posts.getArchivedDaysInRange(start, end));
-
-        const statuses: string[] = [];
-        for (let day = start; day <= end; day++) {
-            const status = archivedDays.has(day) ? '✅' : '❌';
-            statuses.push(`Day ${day}: ${status}`);
-        }
-
-        const totalPages = Math.ceil(statuses.length / PAGE_SIZE);
+        const totalDays = end - start + 1;
+        const totalPages = Math.ceil(totalDays / PAGE_SIZE);
         let currentPage = 0;
 
         const generateEmbed = (page: number) => {
-            const pageStart = page * PAGE_SIZE;
-            const pageEnd = pageStart + PAGE_SIZE;
-            const pageContent = statuses.slice(pageStart, pageEnd).join('\n') || 'No data for this range.';
+            const pageStartDay = start + page * PAGE_SIZE;
+            const pageEndDay = Math.min(end, pageStartDay + PAGE_SIZE - 1);
+
+            // Fetch only the data for the current page from the database
+            const archivedInPage = new Set(client.posts.getArchivedDaysInRange(pageStartDay, pageEndDay));
+            
+            const statuses: string[] = [];
+            for (let day = pageStartDay; day <= pageEndDay; day++) {
+                const status = archivedInPage.has(day) ? '✅' : '❌';
+                statuses.push(`Day ${day}: ${status}`);
+            }
+
+            const pageContent = statuses.join('\n') || 'No data for this page.';
 
             return new EmbedBuilder()
                 .setTitle(`Archive Status: Days ${start} - ${end}`)

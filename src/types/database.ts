@@ -21,3 +21,6 @@ export type MediaAttachment = z.infer<typeof MediaAttachmentSchema>;
 
 // Add this exported type for creating new posts.
 export type CreatePostInput = Omit<Post, 'confirmed'> & { mediaUrls: string[] };
+
+export const MaxDaySchema = z.object({ maxDay: z.number().nullable() });
+export const DayListSchema = z.array(z.object({ day: z.number() }));

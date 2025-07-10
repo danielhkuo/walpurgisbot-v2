@@ -3,10 +3,10 @@ import BetterSqlite3 from 'better-sqlite3';
 import fs from 'fs';
 import path from 'path';
 import logger from '../logger';
+import { config } from '../config';
 
-const dbPath = process.env.NODE_ENV === 'production' ? '/app/data/walpurgis.db' : 'walpurgis.db';
-const db = new BetterSqlite3(dbPath);
-logger.info(`Database connected at ${dbPath}`);
+const db = new BetterSqlite3(config.DATABASE_PATH);
+logger.info(`Database connected at ${config.DATABASE_PATH}`);
 
 db.pragma('journal_mode = WAL'); // For better performance
 

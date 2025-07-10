@@ -4,8 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Command } from '../types/command';
-// Event type will be defined as we need it. For now, we can use any.
-// import type { Event } from '../types/event';
+import type { Event } from '../types/event';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -37,7 +36,7 @@ export async function loadEvents(client: Client) {
     for (const file of eventFiles) {
         try {
             const filePath = path.join(eventsPath, file);
-            const { event } = (await import(filePath)) as { event: any }; // Using `any` for now
+            const { event } = (await import(filePath)) as { event: Event };
             if (event.once) {
                 client.once(event.name, (...args) => event.execute(client, ...args));
             } else {
