@@ -1,0 +1,19 @@
+{
+  "name": "discord.js",
+  "module": "index.ts",
+  "type": "module",
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/bun": "latest",
+    "pino-pretty": "^13.0.0"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.2.0",
+    "discord.js": "^14.21.0",
+    "pino": "^9.7.0",
+    "zod": "^3.25.76"
+  }
+}
