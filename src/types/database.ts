@@ -19,8 +19,22 @@ export const MediaAttachmentSchema = z.object({
 });
 export type MediaAttachment = z.infer<typeof MediaAttachmentSchema>;
 
-// Add this exported type for creating new posts.
 export type CreatePostInput = Omit<Post, 'confirmed'> & { mediaUrls: string[] };
 
 export const MaxDaySchema = z.object({ maxDay: z.number().nullable() });
 export const DayListSchema = z.array(z.object({ day: z.number() }));
+
+export const NotificationSettingsSchema = z.object({
+    id: z.literal(1),
+    notification_channel_id: z.string().nullable(),
+    timezone: z.string().nullable(),
+    reminder_enabled: z.number().transform(val => val === 1),
+    reminder_time: z.string().nullable(),
+    report_enabled: z.number().transform(val => val === 1),
+    report_frequency: z.string().nullable(),
+    report_time: z.string().nullable(),
+    last_reminder_sent_day: z.number().nullable(),
+    last_reminder_check_timestamp: z.number().int().nullable(),
+});
+
+export type NotificationSettings = z.infer<typeof NotificationSettingsSchema>;

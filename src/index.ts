@@ -4,6 +4,8 @@ import { config } from './config';
 import logger from './logger';
 import db from './database';
 import { PostRepository } from './database/postRepository';
+import { SettingsRepository } from './database/settingsRepository';
+import { NotificationService } from './services/notificationService';
 import type { Command } from './types/command';
 import { loadCommands, loadEvents } from './lib/handler';
 import type { Database } from 'better-sqlite3';
@@ -14,6 +16,8 @@ declare module 'discord.js' {
         commands: Collection<string, Command>;
         db: Database;
         posts: PostRepository;
+        settings: SettingsRepository;
+        notificationService: NotificationService;
         logger: typeof logger;
     }
 }
@@ -27,8 +31,9 @@ async function main() {
     client.logger = logger;
     client.db = db;
     client.posts = new PostRepository(client.db);
+    client.settings = new SettingsRepository(client.db);
+    client.notificationService = new NotificationService(client, client.settings, client.posts);
     client.commands = new Collection();
-    // ----------------------------
     
     await loadCommands(client);
     await loadEvents(client);

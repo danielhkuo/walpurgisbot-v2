@@ -11,6 +11,10 @@ const envSchema = z.object({
     JOHAN_USER_ID: z.string().min(1, { message: "JOHAN_USER_ID is required" }),
     DATABASE_PATH: z.string().default('walpurgis.db'),
     COOLDOWN_HOURS: z.coerce.number().int().positive().default(12),
+    
+    // --- NEW: Optional fallback values for notifications ---
+    DEFAULT_CHANNEL_ID: z.string().optional(),
+    TIMEZONE: z.string().optional(), // Should be an IANA timezone string e.g. "Europe/Berlin"
 });
 
 let validatedConfig;

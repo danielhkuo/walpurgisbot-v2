@@ -4,14 +4,17 @@ import type { Event } from '../types/event';
 
 export const event: Event<Events.ClientReady> = {
     name: Events.ClientReady,
-    once: true, // This event should only run once
-    execute: (client: Client, readyClient: Client<true>) => {
-        // The `client` parameter is our main client instance.
-        // The `readyClient` is provided by the event and is guaranteed to be logged in.
+    once: true,
+    execute: async (client: Client, readyClient: Client<true>) => {
         if (!readyClient.user) {
             client.logger.error('Client user is not available on ready event.');
             return;
         }
         client.logger.info(`Ready! Logged in as ${readyClient.user.tag}`);
+        try {
+            await client.notificationService.initialize();
+        } catch (error) {
+            client.logger.error({ err: error }, 'Failed to initialize NotificationService.');
+        }
     },
 };
