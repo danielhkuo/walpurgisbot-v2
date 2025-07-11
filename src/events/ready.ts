@@ -12,9 +12,11 @@ export const event: Event<Events.ClientReady> = {
         }
         client.logger.info(`Ready! Logged in as ${readyClient.user.tag}`);
         try {
+            // Initialize all services that need to run startup logic.
             await client.notificationService.initialize();
+            await client.archiveSessionManager.initialize();
         } catch (error) {
-            client.logger.error({ err: error }, 'Failed to initialize NotificationService.');
+            client.logger.error({ err: error }, 'Failed to initialize services.');
         }
     },
 };

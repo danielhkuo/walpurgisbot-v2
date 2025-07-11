@@ -183,12 +183,18 @@ export class NotificationService {
                 return;
             }
 
-            await channel.send(`🗓️ **Reminder:** The latest archive is Day \`${maxDay}\`. A post for Day \`${expectedDay}\` might be missing!`);
-            this.client.logger.info(`Sent reminder for missing Day ${expectedDay}.`);
-
-            // Mark that we've sent a reminder for the *missing day*.
+            // Mark that we are *about to* send a reminder for the missing day.
             this.settingsRepo.updateSettings({ last_reminder_sent_day: expectedDay });
             this.settings = this.settingsRepo.getSettings(); // Refresh local settings cache
+
+            try {
+                await channel.send(`🗓️ **Reminder:** The latest archive is Day \`${maxDay}\`. A post for Day \`${expectedDay}\` might be missing!`);
+                this.client.logger.info(`Sent reminder for missing Day ${expectedDay}.`);
+            } catch (sendError) {
+                this.client.logger.error({ err: sendError, channelId: channel.id }, 'Failed to send reminder message, but DB was updated to prevent re-sending.');
+                // We do not roll back. This prevents duplicate pings. A missed message is preferable.
+            }
+
         } else {
             this.client.logger.info('Reminder not needed; archive is up-to-date.');
         }

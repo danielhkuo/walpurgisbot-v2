@@ -5,6 +5,7 @@ import logger from './logger';
 import db from './database';
 import { PostRepository } from './database/postRepository';
 import { SettingsRepository } from './database/settingsRepository';
+import { SessionRepository } from './database/sessionRepository';
 import { NotificationService } from './services/notificationService';
 import { ArchiveSessionManager } from './services/archiveSessionManager';
 import type { Command } from './types/command';
@@ -18,6 +19,7 @@ declare module 'discord.js' {
         db: Database;
         posts: PostRepository;
         settings: SettingsRepository;
+        sessions: SessionRepository;
         notificationService: NotificationService;
         archiveSessionManager: ArchiveSessionManager;
         logger: typeof logger;
@@ -34,8 +36,9 @@ async function main() {
     client.db = db;
     client.posts = new PostRepository(client.db);
     client.settings = new SettingsRepository(client.db);
+    client.sessions = new SessionRepository(client.db);
     client.notificationService = new NotificationService(client, client.settings, client.posts);
-    client.archiveSessionManager = new ArchiveSessionManager(client, client.posts);
+    client.archiveSessionManager = new ArchiveSessionManager(client, client.posts, client.sessions);
     client.commands = new Collection();
     
     await loadCommands(client);

@@ -1,12 +1,41 @@
 // src/database/settingsRepository.ts
-import type { Database } from 'better-sqlite3';
+import type { Database, Statement } from 'better-sqlite3';
 import { NotificationSettingsSchema, type NotificationSettings } from '../types/database';
 
 export class SettingsRepository {
     private db: Database;
+    private updateSettingsStmt: Statement;
 
     constructor(db: Database) {
         this.db = db;
+
+        // This static query lists all columns explicitly for safety and clarity.
+        // It performs an "UPSERT": INSERT or, on conflict (id=1 exists), UPDATE.
+        // The `excluded.` prefix in the UPDATE clause refers to the values that
+        // would have been inserted, ensuring the latest data is always used.
+        this.updateSettingsStmt = this.db.prepare(`
+            INSERT INTO notification_settings (
+                id, notification_channel_id, timezone, reminder_enabled, reminder_time,
+                report_enabled, report_frequency, report_time, last_reminder_sent_day,
+                last_reminder_check_timestamp
+            )
+            VALUES (
+                1, @notification_channel_id, @timezone, @reminder_enabled, @reminder_time,
+                @report_enabled, @report_frequency, @report_time, @last_reminder_sent_day,
+                @last_reminder_check_timestamp
+            )
+            ON CONFLICT(id) DO UPDATE SET
+                notification_channel_id = excluded.notification_channel_id,
+                timezone = excluded.timezone,
+                reminder_enabled = excluded.reminder_enabled,
+                reminder_time = excluded.reminder_time,
+                report_enabled = excluded.report_enabled,
+                report_frequency = excluded.report_frequency,
+                report_time = excluded.report_time,
+                last_reminder_sent_day = excluded.last_reminder_sent_day,
+                last_reminder_check_timestamp = excluded.last_reminder_check_timestamp
+            RETURNING *
+        `);
     }
 
     public getSettings(): NotificationSettings | null {
@@ -17,31 +46,34 @@ export class SettingsRepository {
         return NotificationSettingsSchema.parse(row);
     }
     
-    // This uses an UPSERT operation: it inserts a new row if one doesn't exist,
-    // or updates the existing one.
     public updateSettings(data: Partial<Omit<NotificationSettings, 'id'>>): NotificationSettings {
-        const setClauses = Object.keys(data)
-            .map(key => `${key} = @${key}`)
-            .join(', ');
+        const currentSettings = this.getSettings();
 
-        const stmt = this.db.prepare(`
-            INSERT INTO notification_settings (id, ${Object.keys(data).join(', ')})
-            VALUES (1, ${Object.keys(data).map(k => `@${k}`).join(', ')})
-            ON CONFLICT(id) DO UPDATE SET ${setClauses}
-            RETURNING *
-        `);
+        // Define the complete structure of a settings object with defaults.
+        // This is crucial for the static query, which requires all parameters.
+        const defaults = {
+            notification_channel_id: null,
+            timezone: null,
+            reminder_enabled: false,
+            reminder_time: null,
+            report_enabled: false,
+            report_frequency: null,
+            report_time: null,
+            last_reminder_sent_day: null,
+            last_reminder_check_timestamp: null,
+        };
 
-        // Convert boolean `true` to `1` and `false` to `0` for the database
-        const dbData: { [key: string]: any } = {};
-        for (const [key, value] of Object.entries(data)) {
-            if (typeof value === 'boolean') {
-                dbData[key] = value ? 1 : 0;
-            } else {
-                dbData[key] = value;
-            }
-        }
+        // Merge the existing settings (or defaults) with the new partial data.
+        const completeData = { ...(currentSettings ?? defaults), ...data };
         
-        const result = stmt.get(dbData);
+        // Convert boolean values to integers (1/0) for the database.
+        const dbData = {
+            ...completeData,
+            reminder_enabled: completeData.reminder_enabled ? 1 : 0,
+            report_enabled: completeData.report_enabled ? 1 : 0,
+        };
+
+        const result = this.updateSettingsStmt.get(dbData);
         return NotificationSettingsSchema.parse(result);
     }
 }

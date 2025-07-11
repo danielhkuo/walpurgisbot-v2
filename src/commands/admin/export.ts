@@ -1,6 +1,9 @@
 // src/commands/admin/export.ts
 import { SlashCommandBuilder, PermissionFlagsBits, AttachmentBuilder } from 'discord.js';
 import type { ChatInputCommandInteraction, Client } from 'discord.js';
+import { promises as fsPromises, createWriteStream } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import type { Command } from '../../types/command';
 
 // Discord's file size limit is 25MB. We'll use 24MB as a safe buffer.
@@ -16,28 +19,43 @@ export const command: Command = {
     async execute(interaction: ChatInputCommandInteraction, client: Client) {
         await interaction.reply({ content: '⏳ Generating database export... this may take a moment.', ephemeral: true });
 
+        const allPosts = client.posts.findAllWithMedia();
+
+        if (allPosts.length === 0) {
+            await interaction.editReply({
+                content: 'ℹ️ The archive is empty. Nothing to export.',
+            });
+            return;
+        }
+
+        const tempFilePath = path.join(os.tmpdir(), `walpurgis-export-${Date.now()}.json`);
+
         try {
-            const allPosts = client.posts.findAllWithMedia();
+            const writeStream = createWriteStream(tempFilePath, 'utf-8');
+            writeStream.write('[\n');
+            allPosts.forEach((post, index) => {
+                const line = JSON.stringify(post, null, 2);
+                const separator = index < allPosts.length - 1 ? ',' : '';
+                writeStream.write(line + separator + '\n');
+            });
+            writeStream.write(']\n');
 
-            if (allPosts.length === 0) {
-                await interaction.editReply({
-                    content: 'ℹ️ The archive is empty. Nothing to export.',
-                });
-                return;
-            }
+            // Wait for the stream to finish writing to the file
+            await new Promise((resolve, reject) => {
+                writeStream.on('finish', () => resolve(undefined));
+                writeStream.on('error', reject);
+                writeStream.end();
+            });
 
-            // The repository method already returns the data in the desired nested structure.
-            const jsonString = JSON.stringify(allPosts, null, 2); // Pretty-print the JSON
-            const buffer = Buffer.from(jsonString, 'utf-8');
-
-            if (buffer.byteLength > MAX_FILE_SIZE_BYTES) {
+            const stats = await fsPromises.stat(tempFilePath);
+            if (stats.size > MAX_FILE_SIZE_BYTES) {
                 await interaction.editReply({
                     content: `❌ **Export Failed:** The database is too large to send as a single file via Discord (over 24MB). Please contact the bot developer for a manual export.`,
                 });
                 return;
             }
 
-            const attachment = new AttachmentBuilder(buffer, {
+            const attachment = new AttachmentBuilder(tempFilePath, {
                 name: `walpurgis-export-${new Date().toISOString().split('T')[0]}.json`,
             });
 
@@ -60,6 +78,11 @@ export const command: Command = {
             client.logger.error({ err: error }, 'An error occurred during database export.');
             await interaction.editReply({
                 content: 'An unexpected error occurred while generating the export. Please check the logs.',
+            });
+        } finally {
+            // Ensure temporary file is always cleaned up
+            await fsPromises.unlink(tempFilePath).catch(err => {
+                client.logger.warn({ err }, `Failed to clean up temporary export file: ${tempFilePath}`);
             });
         }
     },

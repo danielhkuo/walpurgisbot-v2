@@ -1,15 +1,29 @@
+Of course. Based on a thorough analysis of the codebase, I've updated the README to be more accurate, detailed, and reflective of the bot's sophisticated, session-based architecture for scanning posts.
+
+The key changes include:
+*   **A new "How Automatic Archiving Works" section** that explains the stateful, session-based logic, the "look-behind" feature, and the multi-level confidence parsing.
+*   **Corrected terminology**: Replaced "cooldown system" with the more accurate "state-based validation."
+*   **Enhanced command descriptions**: Added details about the `link` subcommand for `/delete` and mentioned the right-click context menu commands for admins.
+*   **Updated environment variables**: The `.env` example now fully matches the required and optional variables defined in `config.ts` and `.env.example`.
+*   **Refined feature descriptions** to precisely match the implementation (e.g., mentioning transactional database writes).
+
+Here is the updated README:
+
+---
+
 # Walpurgis Bot v2
 
 Walpurgis Bot v2 is a high-performance, production-grade Discord bot meticulously engineered to **automatically and reliably archive daily media posts from a specific user**. Re-engineered from the ground up on a modern, type-safe foundation with **Bun and TypeScript**, it delivers exceptional reliability, maintainability, and operational excellence.
 
-This bot moves beyond a simple script, serving as a **robust, managed service for critical data archiving**, ensuring no important memories are lost.
+This bot moves beyond a simple script, serving as a **robust, stateful service for critical data archiving**, ensuring no important memories are lost.
 
 ---
 
 ## 📖 Table of Contents
 
 *   [✨ Core Features](#-core-features)
-*   [⚙️ Commands](#️-commands)
+*   [🧠 How Automatic Archiving Works](#-how-automatic-archiving-works)
+*   [⚙️ Commands & Admin Tools](#️-commands--admin-tools)
 *   [🚀 Production Deployment (Docker)](#-production-deployment-docker)
 *   [💻 Development Setup](#-development-setup)
 *   [🏛️ Architecture & Design Philosophy](#️-architecture--design-philosophy)
@@ -22,147 +36,143 @@ This bot moves beyond a simple script, serving as a **robust, managed service fo
 
 Walpurgis Bot v2 is built to be a reliable and complete archiving solution:
 
-*   **🤖 Automatic Archiving with Integrity**: A dedicated event handler listens to the target user's messages, intelligently validates content with regex, and automatically archives media with an immediate confirmation reaction (✅).
-*   **🛡️ Robust Data Integrity**: Features a sophisticated cooldown system to prevent accidental duplicate archives. Logic for out-of-sequence day numbers intelligently prompts for manual intervention, proactively preventing data corruption and ensuring archive accuracy.
-*   **🗄️ Comprehensive Command Suite**: A full set of slash commands provides complete control over your archives:
-    *   **`/search`**: Instantly retrieve and display any day's archived media and metadata.
-    *   **`/status`**: Generate a paginated, emoji-coded audit report of archived versus missing days, making it easy to spot gaps.
-    *   **`/delete`**: Safely remove an archive with a clear confirmation prompt, preventing accidental data loss.
-    *   **`/manual-archive`**: A user-friendly modal workflow to effortlessly archive posts that the automatic system might have missed or that require correction.
-*   **💾 Persistent & Atomic Storage**: All critical data is securely stored in a local SQLite database, ensured persistent in production via a Docker volume. All database operations are atomic and transactional, guaranteeing data consistency even during unexpected events.
+*   **🧠 Intelligent & Contextual Archiving**: The bot uses a stateful, session-based system to understand human posting patterns. It can correctly associate media and text even when they are posted in separate messages, providing a seamless user experience.
+*   **🛡️ Absolute Data Integrity**: Instead of a simple cooldown, the bot uses precise, state-based validation against the database to prevent duplicates. Logic for out-of-sequence or ambiguous posts intelligently prompts for manual intervention, proactively preventing data corruption.
+*   **🗄️ Comprehensive Command Suite**: A full set of slash commands provides complete control over your archives, from searching and auditing to safe deletion and easy manual entry via user-friendly modals.
+*   **💾 Persistent & Atomic Storage**: All data is securely stored in a local SQLite database, with persistence ensured in production via a Docker volume. All database write operations are **atomic and transactional**, guaranteeing data consistency even during unexpected events.
 *   **🚀 Blazing Fast Performance**: Leverages the high-speed Bun runtime and an optimized `better-sqlite3` driver for a responsive and fluid user experience.
 *   **🏗️ Scalable & Maintainable Design**: Built with a normalized database schema and a modular, decoupled code structure, allowing the bot to easily grow with new features without requiring extensive refactoring.
 
 ---
 
-## ⚙️ Commands
+## 🧠 How Automatic Archiving Works
 
-The bot is controlled entirely through intuitive Discord slash commands, designed for ease of use and powerful archive management.
+The bot's intelligence comes from its stateful, session-based design that mimics how a human would interpret posts. It does **not** make instant, stateless decisions.
 
-### `/search [day]`
+1.  **Session Initiation**: A short-lived (5-minute) **"Pending Post Session"** is created *only* when the target user posts a message containing **media** (images or videos).
+
+2.  **Context Gathering**: The bot understands that text and media aren't always in the same message.
+    *   **Media First, Text Second**: If the user posts a photo, then a separate comment like "Day 101" a minute later, the bot adds the text to the existing session, completing it for evaluation.
+    *   **Text First, Media Second**: If the user posts "Day 101" and then uploads a photo, the bot creates a session for the media, then automatically performs a "look-behind" search of recent messages. It finds the preceding text and combines it with the media to form a complete session.
+
+3.  **Content Parsing & Confidence Scoring**: The bot parses message content for day numbers with varying levels of confidence:
+    *   **High Confidence**: The message contains keywords like `day`, `daily`, or `johan` next to a number (e.g., "Daily Johan 101").
+    *   **Low Confidence**: The message contains a number but no keywords (e.g., "yearly bobot 111").
+
+4.  **Automated Evaluation & Action**: Once a session is complete, it's evaluated against a strict set of rules:
+    *   ✅ **Happy Path**: A high-confidence, in-sequence day is found. The post is archived, and the original message is reacted with `✅`.
+    *   ⚠️ **Benign Duplicate**: The day is already in the database. The archive is aborted, and the message is reacted with `⚠️` to signal it was seen but ignored.
+    *   🤔 **Low Confidence / Typo**: The bot finds a number but isn't sure. It sends a private prompt to an administrator with `[Confirm Archive]` and `[Ignore]` buttons.
+    *   ⁉️ **Out-of-Sequence**: The bot expects Day `109` but sees Day `110`. It assumes a human error and prompts an admin with `[Force Archive]` and `[Ignore]` buttons.
+    *   ❌ **Ambiguous Post**: The message contains multiple day numbers ("Day 107 and 108"). The bot aborts to prevent data corruption and notifies an admin to use the manual archive command.
+    *   ❓ **Forgotten Text**: The user posts only media and no text follows within 15 seconds. The bot proactively asks an admin if the post should be archived, providing an option to add the day number directly.
+
+This entire process ensures the bot is both highly automated and extremely safe, escalating any ambiguity to a human operator.
+
+---
+
+## ⚙️ Commands & Admin Tools
+
+The bot is controlled through intuitive slash commands and context menus for admins.
+
+### Public Commands
+These are available to all users.
+
+#### `/search <day>`
 Retrieves a specific day's archive, complete with an embed and links.
-
-*   **Description:** Fetches the archived message and media for a given day number.
-*   **Parameters:**
-    | Parameter | Type    | Required? | Description                          |
-    | :-------- | :------ | :-------- | :----------------------------------- |
-    | `day`     | Integer | **Yes**   | The day number you want to find (e.g., `150`). |
 *   **Example Usage:** `</search day:150>`
 *   **Result:** The bot replies with an embed showing the first media attachment, the archive timestamp, and direct links to the original Discord message and any additional media.
 
-### `/status [start] [end]`
+#### `/status [start] [end]`
 Provides a paginated, emoji-coded list showing which days in a range are archived or missing.
-
-*   **Description:** Your powerful tool for auditing the completeness and health of the archive.
-*   **Parameters:**
-    | Parameter | Type    | Required? | Description                                       |
-    | :-------- | :------ | :-------- | :------------------------------------------------ |
-    | `start`   | Integer | No        | The first day of the range to check. Defaults to `1`. |
-    | `end`     | Integer | No        | The last day of the range. Defaults to the latest day in the archive. |
 *   **Example Usage:** `</status start:100 end:150>` or `</status>` for a full audit.
-*   **Result:** An ephemeral, paginated embed appears showing `Day 100: ✅`, `Day 101: ❌`, etc., allowing you to easily identify missing archives. Navigation buttons enable seamless browsing through all pages.
+*   **Result:** An ephemeral, paginated embed appears showing `Day 100: ✅`, `Day 101: ❌`, etc., allowing you to easily identify missing archives.
 
-### `/delete [day]`
-A safe, confirmation-based command to remove an entry from the archive.
+### Admin-Only Tools
+These require the configured `ADMIN_ROLE_ID`.
 
-*   **Description:** Prevents accidental data loss by requiring explicit confirmation before deleting any archived day.
-*   **Parameters:**
-    | Parameter | Type    | Required? | Description                                 |
-    | :-------- | :------ | :-------- | :------------------------------------------ |
-    | `day`     | Integer | **Yes**   | The day number of the archive to delete. |
-*   **Example Usage:** `</delete day:150>`
+#### `/delete <day|link>`
+A safe, confirmation-based command to remove an entry from the archive. It supports two methods:
+*   **By Day:** `/delete day:150`
+*   **By Message Link:** `/delete link:https://discord.com/.../12345`
 *   **Result:** The bot sends an ephemeral message with "Yes, Delete" and "No, Cancel" buttons. The deletion only proceeds if explicitly confirmed.
 
-### `/manual-archive [message_id]`
-A modal-based workflow for archiving a post that the automatic system missed or needs correction.
-
-*   **Description:** Your primary tool for handling edge cases, correcting mistakes, or backfilling missing archives.
-*   **Parameters:**
-    | Parameter    | Type   | Required? | Description                                 |
-    | :----------- | :----- | :-------- | :------------------------------------------ |
-    | `message_id` | String | **Yes**   | The Discord Message ID of the post you want to archive. |
+#### `/manual-archive <message_id>`
+A modal-based workflow for archiving a post that the automatic system missed.
 *   **Example Usage:** `</manual-archive message_id:112233445566778899>`
-*   **Result:** A pop-up modal appears, prompting you to input the `Day Number`. Upon submission, the bot archives the specified message and its media for the given day.
+*   **Result:** A pop-up modal appears, pre-filling the day number if it can be parsed, and prompting you for confirmation. Upon submission, the bot archives the message.
+
+#### `/settings <channel|timezone|reminder>`
+Configures the bot's behavior for scheduled reminders and notifications. Allows setting the notification channel, server timezone, and enabling/disabling daily reminders.
+
+#### `/import` & `/export`
+Provides bulk data management by importing or exporting the entire archive to a JSON file.
+
+#### Right-Click Context Menus
+For ultimate convenience, admins can simply **right-click a message** and select:
+*   **`Manual Archive Post`**: Opens the same modal as the slash command.
+*   **`Delete Archive Entry`**: Initiates the safe deletion workflow for that message.
 
 ---
 
 ## 🚀 Production Deployment (Docker)
 
-Deploying with Docker is the recommended method for production environments. It provides a consistent, isolated, and auto-restarting setup for maximum reliability.
+Deploying with Docker is the recommended method for production. It provides a consistent, isolated, and auto-restarting setup for maximum reliability.
 
 ### Prerequisites
 *   [Docker](https://docs.docker.com/get-docker/)
 *   [Docker Compose](https://docs.docker.com/compose/install/)
 
 ### 1. `docker-compose.yml`
-Create a `docker-compose.yml` file in your desired deployment directory:
-
-```yaml
-version: '3.8'
-
-services:
-  walpurgisbot:
-    # Build the image from the Dockerfile in the current directory
-    build: .
-    container_name: walpurgisbot
-    # Ensure the bot automatically restarts unless explicitly stopped
-    restart: unless-stopped
-    # Load sensitive environment variables from a .env file in the same directory
-    env_file:
-      - .env
-    # Mount a local 'data' directory into the container to persist the SQLite database
-    volumes:
-      - ./data:/usr/src/app/data
-```
-
-> **Note:** This `docker-compose.yml` assumes a `Dockerfile` exists in the same directory, which it does within this project structure.
+This project includes a pre-configured `docker-compose.yml` file.
 
 ### 2. Environment Configuration (`.env`)
-Create a `.env` file in the **same directory** as your `docker-compose.yml` by copying `.env.example`. **Fill in your own values.**
+Create a `.env` file by copying `.env.example`. **Fill in your own values.**
 
 ```env
-# Set to 'production' for optimal performance, detailed logging, and error handling
+# Set to 'production' for optimal performance and logging
 NODE_ENV=production
 
 # --- Discord Bot Credentials (Required) ---
-# Your bot's secret token from the Discord Developer Portal (https://discord.com/developers/applications)
 TOKEN=your_discord_bot_token_here
-# Your bot's application ID (also from the Discord Developer Portal)
 CLIENT_ID=your_bot_client_id_here
-
-# --- Application Settings (Required) ---
-# The ID of the Discord server (guild) where you want the bot to operate.
-# Commands will be registered specifically for this guild.
 GUILD_ID=your_target_server_id_here
-# The Discord User ID of the specific user whose posts you intend to archive.
+
+# --- Application Logic (Required) ---
 JOHAN_USER_ID=the_user_id_to_track_here
+ADMIN_ROLE_ID=a_role_id_for_users_who_can_manage_the_bot
+
+# --- Database (Required) ---
+# For Docker, this path points *inside* the container to the mounted volume
+DATABASE_PATH=walpurgis.db
+
+# --- Proactive Features (Optional, but Recommended) ---
+# The channel ID where the bot sends reminders/prompts before one is set via /settings
+# DEFAULT_CHANNEL_ID=your_default_notification_channel_id
+# The IANA timezone (e.g., "America/New_York") for scheduling before one is set
+# TIMEZONE=UTC
 ```
 
 ### 3. Deployment Steps
-1.  **Create a data directory:** This local folder will store the SQLite database file, ensuring your archive data persists even if the container is removed or recreated.
-    ```bash
-    mkdir data
-    ```
-2.  **Build and run the container:** This command will build the Docker image (if not already built) and start the Walpurgis Bot in the background.
+1.  **Build and run the container:** This command will build the Docker image and start the bot in the background.
     ```bash
     docker-compose up --build -d
     ```
 
 ### Managing the Bot
-*   **View real-time logs:** `docker-compose logs -f walpurgisbot`
-*   **Stop the bot:** `docker-compose stop walpurgisbot`
-*   **Restart the bot:** `docker-compose restart walpurgisbot`
-*   **Take down the container and network (preserves data volume):** `docker-compose down`
-*   **Take down the container and remove the data volume:** `docker-compose down -v` (Use with caution!)
+*   **View real-time logs:** `docker-compose logs -f`
+*   **Stop the bot:** `docker-compose stop`
+*   **Restart the bot:** `docker-compose restart`
+*   **Take down the container:** `docker-compose down`
 
 ---
 
 ## 💻 Development Setup
 
-For those who wish to contribute or run the bot locally without Docker for faster iteration.
+For those who wish to contribute or run the bot locally without Docker.
 
 ### Prerequisites
-*   [Bun](https://bun.sh/docs/installation) (Runtime, Package Manager, Test Runner)
+*   [Bun](https://bun.sh/docs/installation)
 
 ### Steps
 1.  **Clone the repository:**
@@ -174,25 +184,21 @@ For those who wish to contribute or run the bot locally without Docker for faste
     ```bash
     bun install
     ```
-3.  **Configure environment:** Create a `.env` file by copying `.env.example`. For development, the `GUILD_ID` is **essential** as slash commands are registered per-guild for instant updates, allowing for rapid testing without global propagation delays.
+3.  **Configure environment:** Create a `.env` file by copying `.env.example`. The `GUILD_ID` is essential for development, as it allows for instant command updates.
 4.  **Deploy slash commands:** Before the first run (and anytime you change a command's definition), you must register them with Discord.
     ```bash
-    bun run deploy:commands
+    bun run src/lib/deploy-commands.ts
     ```
-5.  **Start the bot:** Run the bot in development mode, typically with hot-reloading enabled by Bun.
+5.  **Start the bot:**
     ```bash
-    bun run dev
-    ```
-6.  **Run tests:**
-    ```bash
-    bun test
+    bun run src/index.ts
     ```
 
 ---
 
 ## 🏛️ Architecture & Design Philosophy
 
-This project is meticulously guided by four fundamental principles, ensuring a robust, maintainable, and high-performance archiving solution. Every architectural decision stems from these core tenets:
+This project is meticulously guided by four fundamental principles, ensuring a robust, maintainable, and high-performance archiving solution.
 
 1.  **Unyielding Reliability**: The bot's primary function—archiving critical data—demands absolute reliability. This is achieved through:
     *   **Transactional Database Operations**: Ensuring all-or-nothing data writes, preventing partial or corrupted entries.
@@ -201,30 +207,30 @@ This project is meticulously guided by four fundamental principles, ensuring a r
 
 2.  **Developer-First Maintainability**: A clean, understandable codebase is paramount for long-term sustainability and collaborative development. This is fostered by:
     *   **Strict TypeScript Type Safety**: Eliminating entire classes of bugs at compile time and providing excellent autocompletion.
-    *   **Dependency Injection (DI)**: Decoupling components for easier testing, mocking, and isolated development.
+    *   **Dependency Injection (DI)**: Decoupling components like the database repository and session manager for easier testing, mocking, and isolated development.
     *   **Logical Project Structure**: A clear directory and file organization that naturally guides developers to relevant code.
 
-3.  **Engineered for Scalability**: The architecture is designed to gracefully handle growth, from a single user to many, and from simple features to complex ones. This is enabled by:
-    *   **Normalized Database Schema**: Efficiently handles varying numbers of media attachments per post without requiring schema changes or performance degradation.
+3.  **Engineered for Scalability**: The architecture is designed to gracefully handle growth. This is enabled by:
+    *   **Normalized Database Schema**: Efficiently handles varying numbers of media attachments per post without requiring schema changes.
     *   **Modular Handlers**: New features can be added cleanly as isolated modules, minimizing side effects and complexity.
 
 4.  **Extreme Performance**: Delivering a fast and responsive user experience is a core objective. This is achieved by:
     *   **Bun Runtime**: Leveraging Bun's unparalleled speed for execution and I/O operations.
     *   **High-Performance Database Driver**: Utilizing `better-sqlite3` for native-level SQLite interactions, ensuring minimal overhead.
-    *   **Optimized Multi-Stage Docker Images**: Creating lean, efficient production containers that start quickly and consume fewer resources.
 
 ### Project Structure
 The project is organized with a strict separation of concerns, making navigation and understanding intuitive:
 ```
 src/
 ├── commands/           # Each file defines a Discord slash command and its execution logic.
-├── database/           # Contains the SQLite database connection, schema, and repository for data access.
-├── events/             # Each file handles a specific Discord client event (e.g., messageCreate, interactionCreate).
-├── lib/                # Reusable utility functions and handlers (e.g., command deployment, common logic).
+├── database/           # Contains the SQLite connection, migrations, and repositories for data access.
+├── events/             # Each file handles a specific Discord client event (e.g., messageCreate).
+├── lib/                # Reusable utility functions and helpers (e.g., command deployment).
+├── services/           # Core stateful services (e.g., ArchiveSessionManager, NotificationService).
 ├── types/              # TypeScript type definitions and Zod schemas for data validation.
 ├── config.ts           # Centralized environment variable loading and validation.
-├── index.ts            # The application's entry point, handling Discord client initialization and dependency injection.
-└── logger.ts           # Pino logger configuration for consistent logging across the application.
+├── index.ts            # The application's entry point, handling client initialization and DI.
+└── logger.ts           # Pino logger configuration.
 ```
 
 ---

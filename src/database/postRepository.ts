@@ -61,10 +61,11 @@ export class PostRepository {
     );
     this.findAllWithMediaStmt = this.db.prepare(`
             SELECT
-                p.day, p.message_id, p.channel_id, p.user_id, p.timestamp, p.confirmed,
-                m.url AS media_url
+                p.*,
+                GROUP_CONCAT(m.url) AS media_urls
             FROM posts p
             LEFT JOIN media_attachments m ON p.day = m.post_day
+            GROUP BY p.day
             ORDER BY p.day ASC
         `);
 
@@ -89,14 +90,12 @@ export class PostRepository {
       let skippedCount = 0;
 
       for (const post of posts) {
-        // A. Check for existing data to prevent overwrites.
         const existing = this.findByDayStmt.get(post.day);
         if (existing) {
           skippedCount++;
           continue; // Skip this day, move to the next.
         }
 
-        // B. Insert the main post record.
         this.postInsertStmt.run({
           day: post.day,
           message_id: post.message_id,
@@ -105,8 +104,6 @@ export class PostRepository {
           timestamp: post.timestamp,
         });
 
-        // --- START: CORRECTED LOGIC ---
-        // C. Handle media transformation with improved type safety.
         let mediaUrls: string[];
 
         if ('media' in post && Array.isArray(post.media)) {
@@ -123,7 +120,6 @@ export class PostRepository {
           // any null or undefined values and inform TypeScript of the result.
           mediaUrls = potentialUrls.filter((url): url is string => !!url);
         }
-        // --- END: CORRECTED LOGIC ---
 
         for (const url of mediaUrls) {
           this.mediaInsertStmt.run(post.day, url);
@@ -185,35 +181,28 @@ export class PostRepository {
 
   public findAllWithMedia(): (Post & { media: string[] })[] {
     const rows = this.findAllWithMediaStmt.all() as (Post & {
-      media_url: string | null;
+      media_urls: string | null;
     })[];
-    const postsMap = new Map<number, Post & { media: string[] }>();
+    const results: (Post & { media: string[] })[] = [];
 
     for (const row of rows) {
-      // Check if we've already processed this post
-      if (!postsMap.has(row.day)) {
-        try {
-          // Parse the post data once and store it
-          const post = PostSchema.parse(row);
-          postsMap.set(row.day, { ...post, media: [] });
-        } catch (error) {
-          logger.error(
-            { err: error, row },
-            'Invalid post data during export, skipping.',
-          );
-          continue; // Skip this malformed post row
-        }
-      }
-
-      // Add media URL if it exists
-      const postEntry = postsMap.get(row.day);
-      if (postEntry && row.media_url) {
-        postEntry.media.push(row.media_url);
+      // The spread operator here separates the known Post fields from the aggregated media_urls.
+      const { media_urls, ...postData } = row;
+      try {
+        // We validate that the core post data matches the Post schema.
+        const post = PostSchema.parse(postData);
+        // The media array is constructed from the comma-separated string, or is empty if null.
+        const media = media_urls ? media_urls.split(',') : [];
+        results.push({ ...post, media });
+      } catch (error) {
+        logger.error(
+          { err: error, row },
+          'Invalid post data from database during findAllWithMedia, skipping.',
+        );
       }
     }
 
-    // Return an array of the structured post objects
-    return Array.from(postsMap.values());
+    return results;
   }
 
   public deleteByDay(day: number): boolean {
