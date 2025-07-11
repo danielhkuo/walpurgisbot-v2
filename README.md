@@ -1,16 +1,3 @@
-Of course. Based on a thorough analysis of the codebase, I've updated the README to be more accurate, detailed, and reflective of the bot's sophisticated, session-based architecture for scanning posts.
-
-The key changes include:
-*   **A new "How Automatic Archiving Works" section** that explains the stateful, session-based logic, the "look-behind" feature, and the multi-level confidence parsing.
-*   **Corrected terminology**: Replaced "cooldown system" with the more accurate "state-based validation."
-*   **Enhanced command descriptions**: Added details about the `link` subcommand for `/delete` and mentioned the right-click context menu commands for admins.
-*   **Updated environment variables**: The `.env` example now fully matches the required and optional variables defined in `config.ts` and `.env.example`.
-*   **Refined feature descriptions** to precisely match the implementation (e.g., mentioning transactional database writes).
-
-Here is the updated README:
-
----
-
 # Walpurgis Bot v2
 
 Walpurgis Bot v2 is a high-performance, production-grade Discord bot meticulously engineered to **automatically and reliably archive daily media posts from a specific user**. Re-engineered from the ground up on a modern, type-safe foundation with **Bun and TypeScript**, it delivers exceptional reliability, maintainability, and operational excellence.
@@ -84,8 +71,8 @@ Retrieves a specific day's archive, complete with an embed and links.
 *   **Result:** The bot replies with an embed showing the first media attachment, the archive timestamp, and direct links to the original Discord message and any additional media.
 
 #### `/status [start] [end]`
-Provides a paginated, emoji-coded list showing which days in a range are archived or missing.
-*   **Example Usage:** `</status start:100 end:150>` or `</status>` for a full audit.
+Provides a paginated, emoji-coded list showing which days in a range are archived or missing. By default, it shows a window of 20 days.
+*   **Example Usage:** `</status start:100 end:150>` or `</status start:100` for a 20-day audit from 100.
 *   **Result:** An ephemeral, paginated embed appears showing `Day 100: ✅`, `Day 101: ❌`, etc., allowing you to easily identify missing archives.
 
 ### Admin-Only Tools
@@ -124,7 +111,7 @@ Deploying with Docker is the recommended method for production. It provides a co
 *   [Docker Compose](https://docs.docker.com/compose/install/)
 
 ### 1. `docker-compose.yml`
-This project includes a pre-configured `docker-compose.yml` file.
+This project includes a pre-configured `docker-compose.yml` file designed for production use.
 
 ### 2. Environment Configuration (`.env`)
 Create a `.env` file by copying `.env.example`. **Fill in your own values.**
@@ -154,7 +141,7 @@ DATABASE_PATH=walpurgis.db
 ```
 
 ### 3. Deployment Steps
-1.  **Build and run the container:** This command will build the Docker image and start the bot in the background.
+1.  **Build and run the container:** This command will build the Docker image and start the bot in the background. It also ensures the database volume is created and mounted.
     ```bash
     docker-compose up --build -d
     ```
@@ -163,7 +150,7 @@ DATABASE_PATH=walpurgis.db
 *   **View real-time logs:** `docker-compose logs -f`
 *   **Stop the bot:** `docker-compose stop`
 *   **Restart the bot:** `docker-compose restart`
-*   **Take down the container:** `docker-compose down`
+*   **Take down the container and network:** `docker-compose down`
 
 ---
 
@@ -184,7 +171,7 @@ For those who wish to contribute or run the bot locally without Docker.
     ```bash
     bun install
     ```
-3.  **Configure environment:** Create a `.env` file by copying `.env.example`. The `GUILD_ID` is essential for development, as it allows for instant command updates.
+3.  **Configure environment:** Create a `.env` file by copying `.env.example`. The `GUILD_ID` is essential for development, as it allows for instant command updates to a single test server.
 4.  **Deploy slash commands:** Before the first run (and anytime you change a command's definition), you must register them with Discord.
     ```bash
     bun run src/lib/deploy-commands.ts
@@ -201,22 +188,24 @@ For those who wish to contribute or run the bot locally without Docker.
 This project is meticulously guided by four fundamental principles, ensuring a robust, maintainable, and high-performance archiving solution.
 
 1.  **Unyielding Reliability**: The bot's primary function—archiving critical data—demands absolute reliability. This is achieved through:
-    *   **Transactional Database Operations**: Ensuring all-or-nothing data writes, preventing partial or corrupted entries.
+    *   **Transactional Database Operations**: Ensuring all-or-nothing data writes with `better-sqlite3`, preventing partial or corrupted entries.
     *   **Runtime Data Validation**: Employing **Zod** for strict schema validation of all incoming and outgoing data, catching errors early.
     *   **Structured Logging**: Utilizing **Pino** for comprehensive, context-rich logging, crucial for debugging and operational monitoring.
+    *   **Robust State Management**: The `ArchiveSessionManager` and `NotificationService` are designed to survive bot restarts and handle missed events.
 
 2.  **Developer-First Maintainability**: A clean, understandable codebase is paramount for long-term sustainability and collaborative development. This is fostered by:
     *   **Strict TypeScript Type Safety**: Eliminating entire classes of bugs at compile time and providing excellent autocompletion.
-    *   **Dependency Injection (DI)**: Decoupling components like the database repository and session manager for easier testing, mocking, and isolated development.
+    *   **Dependency Injection (DI)**: Decoupling components like database repositories and stateful services for easier testing, mocking, and isolated development.
     *   **Logical Project Structure**: A clear directory and file organization that naturally guides developers to relevant code.
 
 3.  **Engineered for Scalability**: The architecture is designed to gracefully handle growth. This is enabled by:
     *   **Normalized Database Schema**: Efficiently handles varying numbers of media attachments per post without requiring schema changes.
-    *   **Modular Handlers**: New features can be added cleanly as isolated modules, minimizing side effects and complexity.
+    *   **Modular Handlers**: New features can be added cleanly as isolated command, event, or service modules, minimizing side effects and complexity.
 
 4.  **Extreme Performance**: Delivering a fast and responsive user experience is a core objective. This is achieved by:
     *   **Bun Runtime**: Leveraging Bun's unparalleled speed for execution and I/O operations.
-    *   **High-Performance Database Driver**: Utilizing `better-sqlite3` for native-level SQLite interactions, ensuring minimal overhead.
+    *   **High-Performance Database Driver**: Utilizing `better-sqlite3`'s prepared statements and synchronous API for native-level SQLite interactions, ensuring minimal overhead.
+    *   **Efficient I/O**: Using Node.js streams for large file operations like `/export` to minimize memory consumption.
 
 ### Project Structure
 The project is organized with a strict separation of concerns, making navigation and understanding intuitive:
@@ -241,4 +230,4 @@ Contributions are welcome! Please feel free to open issues, submit pull requests
 ---
 
 ## 📄 License
-This project is licensed under the MIT License.
+This project is licensed under the BSD-3 License.
