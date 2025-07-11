@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: walpurgisbot-v2
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - /mnt/user/appdata/walpurgisbot-v2:/app/data

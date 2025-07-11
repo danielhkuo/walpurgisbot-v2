@@ -26,6 +26,7 @@
     "zod": "^3.25.76"
   },
   "scripts": {
-    "lint": "eslint src --ext .ts,.js"
+    "lint": "eslint src --ext .ts,.js",
+    "build": "tsc"
   }
 }
