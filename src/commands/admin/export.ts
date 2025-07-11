@@ -19,25 +19,26 @@ export const command: Command = {
     async execute(interaction: ChatInputCommandInteraction, client: Client) {
         await interaction.reply({ content: '⏳ Generating database export... this may take a moment.', ephemeral: true });
 
-        const allPosts = client.posts.findAllWithMedia();
-
-        if (allPosts.length === 0) {
-            await interaction.editReply({
-                content: 'ℹ️ The archive is empty. Nothing to export.',
-            });
-            return;
-        }
-
         const tempFilePath = path.join(os.tmpdir(), `walpurgis-export-${Date.now()}.json`);
 
         try {
             const writeStream = createWriteStream(tempFilePath, 'utf-8');
+            const postGenerator = client.posts.findAllWithMedia();
+
             writeStream.write('[\n');
-            allPosts.forEach((post, index) => {
+            let isFirst = true;
+            for (const post of postGenerator) {
+                if (!isFirst) {
+                    writeStream.write(',\n');
+                }
                 const line = JSON.stringify(post, null, 2);
-                const separator = index < allPosts.length - 1 ? ',' : '';
-                writeStream.write(line + separator + '\n');
-            });
+                writeStream.write(line);
+                isFirst = false;
+            }
+            // Add a final newline if any posts were written
+            if (!isFirst) {
+                writeStream.write('\n');
+            }
             writeStream.write(']\n');
 
             // Wait for the stream to finish writing to the file
@@ -46,6 +47,14 @@ export const command: Command = {
                 writeStream.on('error', reject);
                 writeStream.end();
             });
+
+            // If isFirst is still true, the loop never ran.
+            if (isFirst) {
+                await interaction.editReply({
+                    content: 'ℹ️ The archive is empty. Nothing to export.',
+                });
+                return; // Early return, cleanup will still run
+            }
 
             const stats = await fsPromises.stat(tempFilePath);
             if (stats.size > MAX_FILE_SIZE_BYTES) {

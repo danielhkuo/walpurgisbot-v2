@@ -2,6 +2,7 @@
 import { Events, type Interaction, type Client, GuildMemberRoleManager } from 'discord.js';
 import type { Event } from '../types/event';
 import { config } from '../config';
+import { parseId } from '../lib/customIdManager';
 
 // Helper function to check for admin role for component interactions
 function isBotAdmin(interaction: Interaction): boolean {
@@ -15,10 +16,10 @@ export const event: Event<Events.InteractionCreate> = {
     async execute(client: Client, interaction: Interaction) {
         // --- Component Interaction Handling (Buttons, Modals, etc.) ---
         if (interaction.isButton() || interaction.isModalSubmit()) {
+            const { namespace } = parseId(interaction.customId);
+
             // Check for prefixes used by the ArchiveSessionManager
-            const prefix = interaction.customId.split('_')[0];
-            const archiveActions = ['force', 'confirm', 'ignore', 'add', 'submit'];
-            if (prefix && archiveActions.includes(prefix)) {
+            if (namespace === 'archive') {
                 // All session-managed interactions require admin privileges.
                 if (!isBotAdmin(interaction)) {
                     await interaction.reply({

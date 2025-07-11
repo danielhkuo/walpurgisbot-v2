@@ -59,10 +59,11 @@ export class PostRepository {
     this.mediaInsertStmt = this.db.prepare(
       'INSERT INTO media_attachments (post_day, url) VALUES (?, ?)',
     );
+    // Use json_group_array for safe, robust media URL aggregation.
     this.findAllWithMediaStmt = this.db.prepare(`
             SELECT
                 p.*,
-                GROUP_CONCAT(m.url) AS media_urls
+                json_group_array(m.url) FILTER (WHERE m.url IS NOT NULL) AS media_urls_json
             FROM posts p
             LEFT JOIN media_attachments m ON p.day = m.post_day
             GROUP BY p.day
@@ -179,21 +180,22 @@ export class PostRepository {
     }
   }
 
-  public findAllWithMedia(): (Post & { media: string[] })[] {
-    const rows = this.findAllWithMediaStmt.all() as (Post & {
-      media_urls: string | null;
-    })[];
-    const results: (Post & { media: string[] })[] = [];
+  /**
+   * A generator that yields all posts with their media, one by one.
+   * This allows for low-memory streaming of the entire database.
+   */
+  public *findAllWithMedia(): Generator<Post & { media: string[] }> {
+    const rows = this.findAllWithMediaStmt.iterate() as IterableIterator<
+      Post & { media_urls_json: string | null }
+    >;
 
     for (const row of rows) {
-      // The spread operator here separates the known Post fields from the aggregated media_urls.
-      const { media_urls, ...postData } = row;
+      const { media_urls_json, ...postData } = row;
       try {
-        // We validate that the core post data matches the Post schema.
         const post = PostSchema.parse(postData);
-        // The media array is constructed from the comma-separated string, or is empty if null.
-        const media = media_urls ? media_urls.split(',') : [];
-        results.push({ ...post, media });
+        // Safely parse the JSON array string, defaulting to an empty array.
+        const media = media_urls_json ? JSON.parse(media_urls_json) : [];
+        yield { ...post, media };
       } catch (error) {
         logger.error(
           { err: error, row },
@@ -201,8 +203,6 @@ export class PostRepository {
         );
       }
     }
-
-    return results;
   }
 
   public deleteByDay(day: number): boolean {

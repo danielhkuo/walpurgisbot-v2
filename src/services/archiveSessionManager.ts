@@ -18,6 +18,7 @@ import type { PostRepository } from '../database/postRepository';
 import type { SessionData, SessionRepository } from '../database/sessionRepository';
 import type { CreatePostInput } from '../types/database';
 import { config } from '../config';
+import { createArchiveButtonId, createArchiveModalId, parseId } from '../lib/customIdManager';
 
 /**
  * Represents an active, in-memory session. The data is backed by the database,
@@ -85,7 +86,10 @@ export class ArchiveSessionManager {
   }
 
   public async handleMessage(message: Message): Promise<void> {
-    if (message.author.id !== config.JOHAN_USER_ID) return;
+    // Encapsulated logic: The manager decides if it should act on the message.
+    if (message.author.bot || message.author.id !== config.JOHAN_USER_ID) {
+        return;
+    }
     if (!message.content && message.attachments.size === 0) return;
 
     let sessionData = this.sessions.get(message.author.id);
@@ -242,8 +246,8 @@ export class ArchiveSessionManager {
   private async promptForOutOfSequence(session: LiveArchiveSession, expectedDay: number) {
       const day = session.detectedDays[0] as number;
       const buttons = new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder().setCustomId(`force_archive_${session.messageId}_${day}`).setLabel(`Force Archive as Day ${day}`).setStyle(ButtonStyle.Danger),
-        new ButtonBuilder().setCustomId(`ignore_post_${session.messageId}`).setLabel('Ignore This Post').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId(createArchiveButtonId('force', session.messageId, day)).setLabel(`Force Archive as Day ${day}`).setStyle(ButtonStyle.Danger),
+        new ButtonBuilder().setCustomId(createArchiveButtonId('ignore', session.messageId)).setLabel('Ignore This Post').setStyle(ButtonStyle.Secondary),
       );
       const content = `⚠️ **Sequence Alert:** I expected Day \`${expectedDay}\`, but this post says Day \`${day}\`. How should I proceed? ([Original Message](${session.initialMessage.url}))`;
       await this.notifyAdmins(content, [buttons]);
@@ -258,8 +262,8 @@ export class ArchiveSessionManager {
     private async promptForLowConfidence(session: LiveArchiveSession) {
       const day = session.detectedDays[0] as number;
       const buttons = new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder().setCustomId(`confirm_archive_${session.messageId}_${day}`).setLabel(`Confirm Archive as Day ${day}`).setStyle(ButtonStyle.Success),
-        new ButtonBuilder().setCustomId(`ignore_post_${session.messageId}`).setLabel('Ignore').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId(createArchiveButtonId('confirm', session.messageId, day)).setLabel(`Confirm Archive as Day ${day}`).setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId(createArchiveButtonId('ignore', session.messageId)).setLabel('Ignore').setStyle(ButtonStyle.Secondary),
       );
       const content = `🤔 **Possible Archive Detected:** I found the number \`${day}\` in this message, but the format was unclear. Do you want to archive this as Day ${day}? ([Original Message](${session.initialMessage.url}))`;
       await this.notifyAdmins(content, [buttons]);
@@ -267,8 +271,8 @@ export class ArchiveSessionManager {
   
     private async promptForMediaOnly(session: LiveArchiveSession) {
       const buttons = new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder().setCustomId(`add_day_info_${session.messageId}`).setLabel('Yes, Add Day Info').setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId(`ignore_post_${session.messageId}`).setLabel('No, Not an Archive').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId(createArchiveButtonId('add', session.messageId)).setLabel('Yes, Add Day Info').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId(createArchiveButtonId('ignore', session.messageId)).setLabel('No, Not an Archive').setStyle(ButtonStyle.Secondary),
       );
       const content = `I saw a new photo from Johan with no day information. Is this a Daily Johan archive? ([Original Message](${session.initialMessage.url}))`;
       await this.notifyAdmins(content, [buttons]);
@@ -294,14 +298,17 @@ export class ArchiveSessionManager {
 
   // --- Interaction Handlers ---
   public async handleInteraction(interaction: ButtonInteraction) {
-    const [action, messageId, dayStr] = interaction.customId.split('_');
-    const sessionData = this.findSessionByMessageId(messageId ?? '');
+    const { action, args } = parseId(interaction.customId);
+    const messageId = args[0] ?? '';
+    const dayStr = args[1];
+
+    const sessionData = this.findSessionByMessageId(messageId);
 
     switch (action) {
-      case 'force_archive':
-      case 'confirm_archive': {
+      case 'force':
+      case 'confirm': {
         const day = parseInt(dayStr ?? '0', 10);
-        const liveSession = sessionData ? await this.createLiveSession(sessionData) : await this.recreateLiveSessionFromMessage(messageId ?? '', interaction.channel as TextChannel);
+        const liveSession = sessionData ? await this.createLiveSession(sessionData) : await this.recreateLiveSessionFromMessage(messageId, interaction.channel as TextChannel);
         
         if (!liveSession) {
           await interaction.update({ content: 'Error: Could not find the original message to archive.', components: [] });
@@ -313,9 +320,9 @@ export class ArchiveSessionManager {
         this.cleanupSession(liveSession.userId);
         break;
       }
-      case 'add_day_info': {
+      case 'add': {
           const modal = new ModalBuilder()
-              .setCustomId(`submit_day_info_${messageId}`)
+              .setCustomId(createArchiveModalId('submitDayInfo', messageId))
               .setTitle('Add Day Info to Archive');
           const dayInput = new TextInputBuilder()
               .setCustomId('day_input')
@@ -326,7 +333,7 @@ export class ArchiveSessionManager {
           await interaction.showModal(modal);
           break;
       }
-      case 'ignore_post':
+      case 'ignore':
         if (sessionData) this.cleanupSession(sessionData.userId);
         await interaction.update({ content: 'OK, this post will be ignored.', components: [] });
         break;
@@ -334,7 +341,8 @@ export class ArchiveSessionManager {
   }
   
   public async handleModalSubmit(interaction: ModalSubmitInteraction) {
-      const [_, __, messageId] = interaction.customId.split('_'); // e.g., submit_day_info_12345
+      const { args } = parseId(interaction.customId);
+      const messageId = args[0];
       if (!messageId) return;
 
       const dayString = interaction.fields.getTextInputValue('day_input');

@@ -9,6 +9,7 @@ import {
     type Client,
     type MessageContextMenuCommandInteraction,
 } from 'discord.js';
+import { createDeleteButtonId, parseId } from '../customIdManager';
 
 type DeletableInteraction = ChatInputCommandInteraction | MessageContextMenuCommandInteraction;
 
@@ -27,12 +28,12 @@ export async function presentDeleteConfirmation(
     affectedDays: number[],
 ) {
     const confirmButton = new ButtonBuilder()
-        .setCustomId(`delete_confirm_link_${messageId}`)
+        .setCustomId(createDeleteButtonId('confirm', messageId))
         .setLabel('Yes, Delete')
         .setStyle(ButtonStyle.Danger);
 
     const cancelButton = new ButtonBuilder()
-        .setCustomId(`delete_cancel_link_${messageId}`)
+        .setCustomId(createDeleteButtonId('cancel', messageId))
         .setLabel('No, Cancel')
         .setStyle(ButtonStyle.Secondary);
 
@@ -53,10 +54,10 @@ export async function presentDeleteConfirmation(
     });
 
     collector.on('collect', async (i: ButtonInteraction) => {
-        // Custom ID format: delete_confirm_link_{message_id}
-        const collectedMessageId = i.customId.split('_')[3];
+        const { action, args } = parseId(i.customId);
+        const collectedMessageId = args[0];
 
-        if (i.customId.startsWith('delete_confirm_link')) {
+        if (action === 'confirm') {
             const success = client.posts.deleteByMessageId(collectedMessageId ?? '');
             if (success) {
                 await i.update({
@@ -71,7 +72,7 @@ export async function presentDeleteConfirmation(
                     components: [],
                 });
             }
-        } else if (i.customId.startsWith('delete_cancel_link')) {
+        } else if (action === 'cancel') {
             await i.update({ content: 'Deletion cancelled.', components: [] });
         }
     });
