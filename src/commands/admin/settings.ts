@@ -129,6 +129,7 @@ async function handleSetReminder(interaction: ChatInputCommandInteraction, clien
     }
 }
 
+// Persona handlers
 async function handleSetPersona(interaction: ChatInputCommandInteraction, client: Client): Promise<void> {
     const name = interaction.options.getString('name', true);
 
@@ -262,25 +263,32 @@ export const command: Command = {
         ),
 
     async execute(interaction: ChatInputCommandInteraction, client: Client) {
-        const subcommand = interaction.options.getSubcommand(true);
         const group = interaction.options.getSubcommandGroup(false);
+        const subcommand = interaction.options.getSubcommand(true);
 
-        switch (subcommand) {
-            case 'channel':
-                await handleSetChannel(interaction, client);
-                break;
-            case 'timezone':
-                await handleSetTimezone(interaction, client);
-                break;
-            case 'reminder':
-                await handleSetReminder(interaction, client);
-                break;
-            case 'set':
-                if (group === 'persona') await handleSetPersona(interaction, client);
-                break;
-            case 'list':
-                if (group === 'persona') await handleListPersonas(interaction, client);
-                break;
+        if (group === 'persona') {
+            // Handle subcommands within the 'persona' group
+            switch (subcommand) {
+                case 'set':
+                    await handleSetPersona(interaction, client);
+                    break;
+                case 'list':
+                    await handleListPersonas(interaction, client);
+                    break;
+            }
+        } else {
+            // Handle top-level subcommands
+            switch (subcommand) {
+                case 'channel':
+                    await handleSetChannel(interaction, client);
+                    break;
+                case 'timezone':
+                    await handleSetTimezone(interaction, client);
+                    break;
+                case 'reminder':
+                    await handleSetReminder(interaction, client);
+                    break;
+            }
         }
     },
 
@@ -292,7 +300,7 @@ export const command: Command = {
             const focusedValue = interaction.options.getFocused().toLowerCase();
             const filtered = timezones
                 .filter(tz => tz.toLowerCase().includes(focusedValue))
-                .slice(0, 25); // Discord allows a max of 25 choices
+                .slice(0, 25);
 
             await interaction.respond(filtered.map(choice => ({ name: choice, value: choice })));
         } else if (group === 'persona' && subcommand === 'set') {

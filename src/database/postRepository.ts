@@ -54,7 +54,7 @@ export class PostRepository {
       'SELECT day FROM posts WHERE day BETWEEN ? AND ? ORDER BY day ASC',
     );
     this.postInsertStmt = this.db.prepare(
-      'INSERT INTO posts (day, message_id, channel_id, user_id, timestamp, confirmed) VALUES (@day, @message_id, @channel_id, @user_id, @timestamp, 1)',
+      'INSERT INTO posts (day, message_id, channel_id, user_id, timestamp, confirmed) VALUES (?, ?, ?, ?, ?, 1)',
     );
     this.mediaInsertStmt = this.db.prepare(
       'INSERT INTO media_attachments (post_day, url) VALUES (?, ?)',
@@ -72,13 +72,13 @@ export class PostRepository {
 
     // --- DEFINE TRANSACTIONS ---
     this.createTransaction = this.db.transaction((data: CreatePostInput) => {
-      this.postInsertStmt.run({
-        day: data.day,
-        message_id: data.message_id,
-        channel_id: data.channel_id,
-        user_id: data.user_id,
-        timestamp: data.timestamp,
-      });
+      this.postInsertStmt.run(
+        data.day,
+        data.message_id,
+        data.channel_id,
+        data.user_id,
+        data.timestamp
+      );
 
       for (const url of data.mediaUrls) {
         this.mediaInsertStmt.run(data.day, url);
@@ -97,13 +97,13 @@ export class PostRepository {
           continue; // Skip this day, move to the next.
         }
 
-        this.postInsertStmt.run({
-          day: post.day,
-          message_id: post.message_id,
-          channel_id: post.channel_id,
-          user_id: post.user_id,
-          timestamp: post.timestamp,
-        });
+        this.postInsertStmt.run(
+          post.day,
+          post.message_id,
+          post.channel_id,
+          post.user_id,
+          post.timestamp
+        );
 
         let mediaUrls: string[];
 

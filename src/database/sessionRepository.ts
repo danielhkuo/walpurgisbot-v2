@@ -39,7 +39,7 @@ export class SessionRepository {
         this.getByMessageIdStmt = this.db.prepare('SELECT * FROM archive_sessions WHERE message_id = ?');
         this.upsertStmt = this.db.prepare(
             `INSERT INTO archive_sessions (user_id, channel_id, message_id, media_urls, detected_days, confidence, expires_at)
-             VALUES (@userId, @channelId, @messageId, @mediaUrls, @detectedDays, @confidence, @expiresAt)
+             VALUES (?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT(user_id) DO UPDATE SET
                 channel_id = excluded.channel_id,
                 message_id = excluded.message_id,
@@ -81,15 +81,15 @@ export class SessionRepository {
     }
 
     public upsert(data: SessionData): void {
-        this.upsertStmt.run({
-            userId: data.userId,
-            channelId: data.channelId,
-            messageId: data.messageId,
-            mediaUrls: JSON.stringify(data.mediaUrls),
-            detectedDays: JSON.stringify(data.detectedDays),
-            confidence: data.confidence,
-            expiresAt: data.expiresAt,
-        });
+        this.upsertStmt.run(
+            data.userId,
+            data.channelId,
+            data.messageId,
+            JSON.stringify(data.mediaUrls),
+            JSON.stringify(data.detectedDays),
+            data.confidence,
+            data.expiresAt
+        );
     }
 
     public delete(userId: string): void {

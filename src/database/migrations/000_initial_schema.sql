@@ -1,73 +1,101 @@
 -- src/database/migrations/000_initial_schema.sql
--- Initial schema for the walpurgisbot-v2 database.
--- This migration creates all the core tables needed for the bot to function.
--- It is designed to be idempotent, so it can be run safely on new or existing databases.
 
--- Archive posts and their associated media.
+-- Use PRAGMA foreign_keys=ON to enforce foreign key constraints.
+-- WAL mode is generally good for concurrency and is the default in Bun.
+PRAGMA journal_mode = WAL;
+PRAGMA foreign_keys = ON;
+
+-- Table for archived posts
 CREATE TABLE IF NOT EXISTS posts (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    day INTEGER NOT NULL UNIQUE, -- Day number from archive (e.g., 123)
-    channel_id TEXT NOT NULL,   -- Discord channel ID
-    message_id TEXT NOT NULL,   -- Discord message ID
-    timestamp INTEGER NOT NULL  -- Unix timestamp when the post was archived
+    day         INTEGER PRIMARY KEY NOT NULL,
+    message_id  TEXT NOT NULL,
+    channel_id  TEXT NOT NULL,
+    user_id     TEXT NOT NULL,
+    timestamp   INTEGER NOT NULL,
+    confirmed   INTEGER NOT NULL DEFAULT 1
 );
+CREATE INDEX IF NOT EXISTS idx_posts_message_id ON posts(message_id);
 
--- Individual media attachments belonging to a post.
-CREATE TABLE IF NOT EXISTS media (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    post_day INTEGER NOT NULL, -- Reference to posts.day (cascading deletes)
-    url TEXT NOT NULL,
+-- Table for media attachments, linked to posts
+CREATE TABLE IF NOT EXISTS media_attachments (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    post_day    INTEGER NOT NULL,
+    url         TEXT NOT NULL,
     FOREIGN KEY (post_day) REFERENCES posts(day) ON DELETE CASCADE
 );
 
--- Sessions to track user interactions for archive processing.
+-- Table for short-lived archive sessions
 CREATE TABLE IF NOT EXISTS archive_sessions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id TEXT NOT NULL,
-    message_id TEXT NOT NULL UNIQUE,
-    channel_id TEXT NOT NULL,
-    detected_days TEXT, -- JSON array of detected day numbers
-    confidence_level TEXT NOT NULL,
-    created_at INTEGER NOT NULL
+    user_id         TEXT PRIMARY KEY NOT NULL,
+    channel_id      TEXT NOT NULL,
+    message_id      TEXT NOT NULL,
+    media_urls      TEXT NOT NULL, -- Stored as a JSON array string
+    detected_days   TEXT NOT NULL, -- Stored as a JSON array string
+    confidence      TEXT NOT NULL CHECK(confidence IN ('high', 'low', 'none')),
+    expires_at      INTEGER NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_message_id ON archive_sessions(message_id);
+
+-- Table for server-wide notification settings (singleton)
+CREATE TABLE IF NOT EXISTS notification_settings (
+    id                              INTEGER PRIMARY KEY CHECK (id = 1),
+    notification_channel_id         TEXT,
+    timezone                        TEXT,
+    reminder_enabled                BOOLEAN NOT NULL DEFAULT 0,
+    reminder_time                   TEXT,
+    report_enabled                  BOOLEAN NOT NULL DEFAULT 0,
+    report_frequency                TEXT,
+    report_time                     TEXT,
+    last_reminder_sent_day          INTEGER,
+    last_reminder_check_timestamp   INTEGER,
+    active_persona_name             TEXT NOT NULL DEFAULT 'default'
 );
 
--- Index to efficiently look up sessions by the message they are related to.
-CREATE INDEX IF NOT EXISTS idx_sessions_message_id ON archive_sessions(message_id);
-
--- Stores the available personas for the bot.
+-- Table for bot personas
 CREATE TABLE IF NOT EXISTS personas (
-    name TEXT PRIMARY KEY,
-    description TEXT NOT NULL
+    name            TEXT PRIMARY KEY NOT NULL,
+    description     TEXT NOT NULL
 );
 
--- Stores all user-facing dialogue strings, keyed for retrieval.
+-- Table for dialogue strings, linked to personas
 CREATE TABLE IF NOT EXISTS dialogue (
-    key TEXT NOT NULL,
-    persona_name TEXT NOT NULL,
-    text TEXT NOT NULL,
-    PRIMARY KEY (key, persona_name),
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    persona_name    TEXT NOT NULL,
+    key             TEXT NOT NULL,
+    text            TEXT NOT NULL,
+    UNIQUE (persona_name, key),
     FOREIGN KEY (persona_name) REFERENCES personas(name) ON DELETE CASCADE
 );
 
--- A singleton table (always id=1) for storing global bot settings.
-CREATE TABLE IF NOT EXISTS notification_settings (
-    id INTEGER PRIMARY KEY DEFAULT 1,
-    notification_channel_id TEXT,
-    timezone TEXT DEFAULT 'UTC',
-    reminder_enabled BOOLEAN DEFAULT FALSE,
-    reminder_time TEXT,
-    report_enabled BOOLEAN DEFAULT FALSE,
-    report_frequency TEXT,
-    report_time TEXT,
-    last_reminder_sent_day INTEGER,
-    last_reminder_check_timestamp INTEGER,
-    active_persona_name TEXT NOT NULL DEFAULT 'default',
-    CONSTRAINT id_must_be_1 CHECK (id = 1),
-    FOREIGN KEY (active_persona_name) REFERENCES personas(name) ON UPDATE CASCADE
+-- Initialize the settings row if it doesn't exist. We explicitly provide
+-- valid values for all NOT NULL columns to ensure the initial row is compliant,
+-- bypassing any potential driver/SQLite quirks with honoring DEFAULT values on
+-- partial inserts. This was the root cause of the persistent NOT NULL errors.
+INSERT OR IGNORE INTO notification_settings (
+    id, 
+    notification_channel_id, 
+    timezone, 
+    reminder_enabled, 
+    reminder_time, 
+    report_enabled, 
+    report_frequency, 
+    report_time, 
+    last_reminder_sent_day, 
+    last_reminder_check_timestamp, 
+    active_persona_name
+) VALUES (
+    1, 
+    NULL, 
+    NULL, 
+    0, 
+    NULL, 
+    0, 
+    NULL, 
+    NULL, 
+    NULL, 
+    NULL, 
+    'default'
 );
-
--- Initialize the settings row if it doesn't exist, so we can always UPDATE it.
-INSERT OR IGNORE INTO notification_settings (id, active_persona_name) VALUES (1, 'default');
 
 -- Populate the default persona and its dialogue strings.
 INSERT OR IGNORE INTO personas (name, description) VALUES ('default', 'A weary, world-worn archivist, dutifully recording the absurdities of the everyday.');
