@@ -2,9 +2,7 @@ version: '3.8'
 
 services:
   bot:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ghcr.io/danielhkuo/walpurgisbot-v2:latest
     container_name: walpurgisbot-v2
     restart: unless-stopped
     env_file:
