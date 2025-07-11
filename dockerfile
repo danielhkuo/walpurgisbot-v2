@@ -6,9 +6,11 @@
 FROM --platform=${TARGETPLATFORM:-linux/amd64} oven/bun:1.2.17-alpine AS builder
 WORKDIR /app
 
-# --- FIX: Set NODE_ENV for the build ---
-# This ensures Bun.env.NODE_ENV is 'production' when the compiler runs.
-ENV NODE_ENV=production
+# --- FIX: Define NODE_ENV using an ARG for CI/CD ---
+# Define a build argument with a default value of 'production'.
+ARG NODE_ENV=production
+# Set the environment variable from the build argument.
+ENV NODE_ENV=${NODE_ENV}
 
 # 1) Copy manifests.
 COPY package.json bun.lock tsconfig.json ./
@@ -16,7 +18,6 @@ COPY package.json bun.lock tsconfig.json ./
 # 2) Install dependencies.
 RUN --mount=type=cache,target=/root/.bun \
     bun install --frozen-lockfile --production
-    # The --production flag is good practice; it skips devDependencies
 
 # 3) Bring in the rest of the source and build the single binary
 COPY . .
@@ -36,19 +37,11 @@ WORKDIR /app
 ENV NODE_ENV=production \
     DATABASE_PATH=/app/data/walpurgis.db
 
-# Create unprivileged user
+# ... (rest of the file is correct) ...
 RUN addgroup -S appuser && adduser -S appuser -G appuser
-
-# Mount for persistent data
 VOLUME ["/app/data"]
-
-# Copy only the compiled binary from the builder stage.
 COPY --from=builder /app/walpurgisbot-v2 .
-
-# Set permissions and switch user
 RUN chown -R appuser:appuser /app && \
     chmod +x /app/walpurgisbot-v2
 USER appuser
-
-# Entrypoint
 CMD ["./walpurgisbot-v2"]
