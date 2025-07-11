@@ -1,11 +1,21 @@
-version: '3.8'
-
 services:
   bot:
+    # 'build: .' tells compose to use the Dockerfile in this directory.
+    # This takes priority over the 'image' tag when building.
+    build: .
+    # The image name is used to tag the image after it's built locally.
+    # It's also used to pull from a registry if you don't use --build.
     image: ghcr.io/danielhkuo/walpurgisbot-v2:latest
     container_name: walpurgisbot-v2
     restart: unless-stopped
+    environment:
+      # This ensures production logging is always used in the container.
+      - NODE_ENV=production
     env_file:
       - .env
     volumes:
-      - /mnt/user/appdata/walpurgisbot-v2:/app/data
+      # Use a relative path for the database. This works everywhere.
+      # On your server, make sure this path is where you want to store data.
+      # For Unraid, you would map this to your appdata share, e.g.:
+      # - /mnt/user/appdata/walpurgisbot-v2:/app/data
+      - ./data:/app/data

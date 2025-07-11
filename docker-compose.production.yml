@@ -1,0 +1,10 @@
+services:
+  bot:
+    image: ghcr.io/danielhkuo/walpurgisbot-v2:latest
+    container_name: walpurgisbot-v2
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      # Use the absolute path to your persistent storage on the server.
+      - /mnt/user/appdata/walpurgisbot-v2:/app/data
