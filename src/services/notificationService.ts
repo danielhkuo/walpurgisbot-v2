@@ -13,6 +13,16 @@ import type { NotificationSettings } from '../types/database';
 /**
  * Manages scheduled tasks like daily reminders and reports.
  * This service is robust against bot downtime via "catch-up" logic.
+ *
+ * Reminder Sending Policy:
+ * To prevent duplicate notifications, this service follows an "at-most-once"
+ * delivery strategy with a retry window. It works as follows:
+ * 1. The database is marked *before* attempting to send a notification.
+ * 2. If the notification sends successfully, the state is persisted.
+ * 3. If the send fails (e.g., Discord API outage), the database change is
+ *    reverted.
+ * This ensures that the next time the check runs (e.g., after a bot restart),
+ * it will automatically retry sending the missed notification.
  */
 export class NotificationService {
   private client: Client;
@@ -183,6 +193,9 @@ export class NotificationService {
                 return;
             }
 
+            // Store previous state in case of failure, enabling a retry.
+            const previousSentDay = this.settings?.last_reminder_sent_day;
+
             // Mark that we are *about to* send a reminder for the missing day.
             this.settingsRepo.updateSettings({ last_reminder_sent_day: expectedDay });
             this.settings = this.settingsRepo.getSettings(); // Refresh local settings cache
@@ -191,8 +204,10 @@ export class NotificationService {
                 await channel.send(`🗓️ **Reminder:** The latest archive is Day \`${maxDay}\`. A post for Day \`${expectedDay}\` might be missing!`);
                 this.client.logger.info(`Sent reminder for missing Day ${expectedDay}.`);
             } catch (sendError) {
-                this.client.logger.error({ err: sendError, channelId: channel.id }, 'Failed to send reminder message, but DB was updated to prevent re-sending.');
-                // We do not roll back. This prevents duplicate pings. A missed message is preferable.
+                this.client.logger.error({ err: sendError, channelId: channel.id }, 'Failed to send reminder message. Rolling back to allow a retry on the next run.');
+                // Roll back the setting to allow a retry on the next scheduled check.
+                this.settingsRepo.updateSettings({ last_reminder_sent_day: previousSentDay });
+                this.settings = this.settingsRepo.getSettings(); // Re-refresh local cache
             }
 
         } else {

@@ -1,14 +1,14 @@
 // src/events/interactionCreate.ts
-import { Events, type Interaction, type Client, GuildMemberRoleManager } from 'discord.js';
+import { Events, type Interaction, type Client, PermissionFlagsBits } from 'discord.js';
 import type { Event } from '../types/event';
 import { config } from '../config';
 import { parseId } from '../lib/customIdManager';
 
-// Helper function to check for admin role for component interactions
-function isBotAdmin(interaction: Interaction): boolean {
-    if (!interaction.member || !interaction.member.roles) return false;
-    const roles = interaction.member.roles as GuildMemberRoleManager;
-    return roles.cache.has(config.ADMIN_ROLE_ID);
+// Helper function to check for admin permissions for component interactions
+function hasAdminPermissions(interaction: Interaction): boolean {
+    if (!interaction.memberPermissions) return false;
+    // Unify permission check with the declarative one used in commands (ManageGuild).
+    return interaction.memberPermissions.has(PermissionFlagsBits.ManageGuild);
 }
 
 export const event: Event<Events.InteractionCreate> = {
@@ -21,7 +21,7 @@ export const event: Event<Events.InteractionCreate> = {
             // Check for prefixes used by the ArchiveSessionManager
             if (namespace === 'archive') {
                 // All session-managed interactions require admin privileges.
-                if (!isBotAdmin(interaction)) {
+                if (!hasAdminPermissions(interaction)) {
                     await interaction.reply({
                         content: 'You do not have permission to perform this action.',
                         ephemeral: true,

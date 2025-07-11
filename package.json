@@ -1,7 +1,8 @@
 {
-  "name": "discord.js",
-  "module": "index.ts",
+  "name": "walpurgisbot-v2",
+  "private": true,
   "type": "module",
+  "main": "./dist/index.js",
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
     "@types/bun": "latest",

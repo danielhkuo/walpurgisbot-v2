@@ -371,27 +371,25 @@ export class ArchiveSessionManager {
       this.cleanupSession(liveSession.userId);
   }
 
-  // --- Utility Methods ---
-  private clearTimer(userId: string) {
-      const timer = this.activeTimers.get(userId);
-      if (timer) {
-          clearTimeout(timer);
-          this.activeTimers.delete(userId);
-      }
+// --- Utility Methods ---
+private clearTimer(userId: string) {
+  const timer = this.activeTimers.get(userId);
+  if (timer) {
+      clearTimeout(timer);
+      this.activeTimers.delete(userId);
   }
+}
 
-  private cleanupSession(userId: string): void {
-    this.clearTimer(userId);
-    this.sessions.delete(userId);
-  }
+private cleanupSession(userId: string): void {
+this.clearTimer(userId);
+this.sessions.delete(userId);
+}
 
-  private findSessionByMessageId(messageId: string): SessionData | null {
-      // This is inefficient but acceptable for a small number of sessions.
-      const allSessions = this.sessions.findAll();
-      return allSessions.find(s => s.messageId === messageId) ?? null;
-  }
+private findSessionByMessageId(messageId: string): SessionData | null {
+  return this.sessions.getByMessageId(messageId);
+}
 
-  private async recreateLiveSessionFromMessage(messageId: string, channel: TextChannel | null): Promise<LiveArchiveSession | null> {
+private async recreateLiveSessionFromMessage(messageId: string, channel: TextChannel | null): Promise<LiveArchiveSession | null> {
       if (!channel) return null;
       try {
           const message = await channel.messages.fetch(messageId);

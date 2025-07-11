@@ -27,6 +27,7 @@ interface SessionRow {
 export class SessionRepository {
     private db: Database;
     private getStmt: Statement;
+    private getByMessageIdStmt: Statement;
     private upsertStmt: Statement;
     private deleteStmt: Statement;
     private findAllStmt: Statement;
@@ -35,6 +36,7 @@ export class SessionRepository {
     constructor(db: Database) {
         this.db = db;
         this.getStmt = this.db.prepare('SELECT * FROM archive_sessions WHERE user_id = ?');
+        this.getByMessageIdStmt = this.db.prepare('SELECT * FROM archive_sessions WHERE message_id = ?');
         this.upsertStmt = this.db.prepare(
             `INSERT INTO archive_sessions (user_id, channel_id, message_id, media_urls, detected_days, confidence, expires_at)
              VALUES (@userId, @channelId, @messageId, @mediaUrls, @detectedDays, @confidence, @expiresAt)
@@ -65,6 +67,11 @@ export class SessionRepository {
 
     public get(userId: string): SessionData | null {
         const row = this.getStmt.get(userId) as SessionRow | undefined;
+        return row ? this.rowToData(row) : null;
+    }
+
+    public getByMessageId(messageId: string): SessionData | null {
+        const row = this.getByMessageIdStmt.get(messageId) as SessionRow | undefined;
         return row ? this.rowToData(row) : null;
     }
 
