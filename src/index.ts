@@ -10,7 +10,7 @@ import { ArchiveSessionManager } from './services/archiveSessionManager';
 import { DialogueService } from './services/dialogueService';
 import type { Command } from './types/command';
 import type { MessageContextMenuCommand } from './types/contextMenuCommand';
-import { loadCommands, loadEvents } from './lib/handler';
+import { registerCommands, registerEvents } from './registry';
 import logger from './logger';
 import { config } from './config';
 import type { Database } from 'bun:sqlite';
@@ -48,8 +48,8 @@ async function setupClient() {
     client.dialogueService = new DialogueService(client);
     client.commands = new Collection();
     
-    await loadCommands(client);
-    await loadEvents(client);
+    registerCommands(client);
+    registerEvents(client);
 }
 
 async function main() {
