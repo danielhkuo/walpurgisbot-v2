@@ -4,85 +4,86 @@ import {
     ButtonBuilder,
     ButtonStyle,
     ComponentType,
-    type ButtonInteraction,
     type ChatInputCommandInteraction,
-    type Client,
     type MessageContextMenuCommandInteraction,
+    type Client,
+    type MessageComponentInteraction,
 } from 'discord.js';
 import { createDeleteButtonId, parseId } from '../customIdManager';
 
-type DeletableInteraction = ChatInputCommandInteraction | MessageContextMenuCommandInteraction;
+type DeleteInteraction = ChatInputCommandInteraction | MessageContextMenuCommandInteraction;
 
 /**
- * Presents a standardized, ephemeral confirmation prompt for deleting archive entries.
- * Handles the button collector and resulting database operation.
- * @param interaction The interaction that triggered the deletion.
- * @param client The Discord client instance.
- * @param messageId The ID of the message whose archive entries will be deleted.
- * @param affectedDays An array of day numbers that will be deleted.
+ * Shows a confirmation prompt with buttons for deleting an archive entry.
+ * Handles the entire deletion flow with user confirmation.
  */
 export async function presentDeleteConfirmation(
-    interaction: DeletableInteraction,
+    interaction: DeleteInteraction,
     client: Client,
     messageId: string,
     affectedDays: number[],
 ) {
     const confirmButton = new ButtonBuilder()
         .setCustomId(createDeleteButtonId('confirm', messageId))
-        .setLabel('Yes, Delete')
+        .setLabel(client.dialogueService.get('delete.confirm.button.confirm'))
         .setStyle(ButtonStyle.Danger);
 
     const cancelButton = new ButtonBuilder()
         .setCustomId(createDeleteButtonId('cancel', messageId))
-        .setLabel('No, Cancel')
+        .setLabel(client.dialogueService.get('delete.confirm.button.cancel'))
         .setStyle(ButtonStyle.Secondary);
 
     const row = new ActionRowBuilder<ButtonBuilder>().addComponents(confirmButton, cancelButton);
 
     const reply = await interaction.reply({
-        content: `This message is associated with Day(s) **${affectedDays.join(
-            ', ',
-        )}**. Are you sure you want to delete all related archive entries?`,
+        content: client.dialogueService.get('delete.confirm.prompt', {
+            days: affectedDays.join(', '),
+        }),
         components: [row],
         ephemeral: true,
     });
 
+    const filter = (i: MessageComponentInteraction) => i.user.id === interaction.user.id;
     const collector = reply.createMessageComponentCollector({
         componentType: ComponentType.Button,
-        filter: i => i.user.id === interaction.user.id,
-        time: 30_000, // 30 seconds
+        time: 60000,
+        filter,
     });
 
-    collector.on('collect', async (i: ButtonInteraction) => {
-        const { action, args } = parseId(i.customId);
-        const collectedMessageId = args[0];
+    collector.on('collect', i => {
+        void (async () => {
+            const { action } = parseId(i.customId);
+            const collectedMessageId = messageId;
 
-        if (action === 'confirm') {
-            const success = client.posts.deleteByMessageId(collectedMessageId ?? '');
-            if (success) {
+            if (action === 'confirm') {
+                const success = client.posts.deleteByMessageId(collectedMessageId ?? '');
+                if (success) {
+                    await i.update({
+                        content: client.dialogueService.get('delete.confirm.success', {
+                            days: affectedDays.join(', '),
+                        }),
+                        components: [],
+                    });
+                } else {
+                    await i.update({
+                        content: client.dialogueService.get('delete.confirm.fail'),
+                        components: [],
+                    });
+                }
+            } else if (action === 'cancel') {
                 await i.update({
-                    content: `✅ Deletion confirmed. The archive entries for Day(s) **${affectedDays.join(
-                        ', ',
-                    )}** have been removed.`,
-                    components: [],
-                });
-            } else {
-                await i.update({
-                    content: '❌ Error: Failed to delete the archive entries. Check the logs.',
+                    content: client.dialogueService.get('delete.confirm.cancelled'),
                     components: [],
                 });
             }
-        } else if (action === 'cancel') {
-            await i.update({ content: 'Deletion cancelled.', components: [] });
-        }
+        })();
     });
 
-    collector.on('end', async collected => {
-        if (collected.size === 0) {
-            await interaction.editReply({
-                content: 'Confirmation timed out. Deletion cancelled.',
-                components: [],
-            });
-        }
+    collector.on('end', collected => {
+        void (async () => {
+            if (collected.size === 0) {
+                await interaction.editReply({ content: client.dialogueService.get('delete.confirm.timeout'), components: [] });
+            }
+        })();
     });
 }

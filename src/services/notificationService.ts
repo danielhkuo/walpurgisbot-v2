@@ -1,14 +1,14 @@
 // src/services/notificationService.ts
+import { CronJob } from 'cron';
 import { ChannelType } from 'discord.js';
 import type { Client } from 'discord.js';
-import { CronJob } from 'cron';
+import type { SettingsRepository } from '../database/settingsRepository';
+import type { PostRepository } from '../database/postRepository';
+import type { NotificationSettings } from '../types/database';
 import { subDays } from 'date-fns';
 import { format, toZonedTime } from 'date-fns-tz';
 
 import { config } from '../config';
-import type { PostRepository } from '../database/postRepository';
-import type { SettingsRepository } from '../database/settingsRepository';
-import type { NotificationSettings } from '../types/database';
 
 /**
  * Manages scheduled tasks like daily reminders and reports.
@@ -90,7 +90,7 @@ export class NotificationService {
 
     this.reminderJob = new CronJob(
       cronTime,
-      () => void this.runDailyReminderCheck(),
+      () => { void this.runDailyReminderCheck(); },
       null,
       true,
       this.settings.timezone,
@@ -99,7 +99,7 @@ export class NotificationService {
     this.client.logger.info({
         cronTime,
         timezone: this.settings.timezone,
-        nextRun: this.reminderJob.nextDate().toISO()
+        nextRun: this.reminderJob.nextDate().toISO?.() ?? this.reminderJob.nextDate().toString()
       },
       `Daily reminder scheduled.`
     );
@@ -201,7 +201,10 @@ export class NotificationService {
             this.settings = this.settingsRepo.getSettings(); // Refresh local settings cache
 
             try {
-                await channel.send(`🗓️ **Reminder:** The latest archive is Day \`${maxDay}\`. A post for Day \`${expectedDay}\` might be missing!`);
+                const message = this.client.dialogueService.get('notification.reminder.missingDay', {
+                    maxDay, expectedDay
+                });
+                await channel.send(message);
                 this.client.logger.info(`Sent reminder for missing Day ${expectedDay}.`);
             } catch (sendError) {
                 this.client.logger.error({ err: sendError, channelId: channel.id }, 'Failed to send reminder message. Rolling back to allow a retry on the next run.');

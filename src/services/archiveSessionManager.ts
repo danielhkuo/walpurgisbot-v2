@@ -16,7 +16,6 @@ import {
 import { parseMessageContent } from '../lib/archiveParser';
 import type { PostRepository } from '../database/postRepository';
 import type { SessionData, SessionRepository } from '../database/sessionRepository';
-import type { CreatePostInput } from '../types/database';
 import { config } from '../config';
 import { createArchiveButtonId, createArchiveModalId, parseId } from '../lib/customIdManager';
 
@@ -60,7 +59,7 @@ export class ArchiveSessionManager {
    * Initializes the manager on bot startup.
    * It cleans up expired sessions and re-hydrates timers for active ones.
    */
-  public async initialize() {
+  public initialize() {
       this.client.logger.info('Initializing ArchiveSessionManager...');
       // 1. Clean up any sessions that expired while the bot was offline.
       this.sessions.deleteExpired();
@@ -153,7 +152,7 @@ export class ArchiveSessionManager {
     const newExpiry = Math.floor((Date.now() + this.SESSION_LIFETIME_MS) / 1000);
     sessionData.expiresAt = newExpiry;
     
-    const timer = setTimeout(() => this.onSessionTimeout(sessionData!.userId), this.SESSION_LIFETIME_MS);
+    const timer = setTimeout(() => this.onSessionTimeout(sessionData.userId), this.SESSION_LIFETIME_MS);
     this.activeTimers.set(sessionData.userId, timer);
     this.sessions.upsert(sessionData);
 
@@ -199,7 +198,7 @@ export class ArchiveSessionManager {
         return;
       }
 
-      await this.archivePost(session, day);
+      this.archivePost(session, day);
       await initialMessage.react('✅');
       this.cleanupSession(session.userId);
       return;
@@ -225,12 +224,12 @@ export class ArchiveSessionManager {
     session.expiresAt = newExpiry;
     this.sessions.upsert(session);
     
-    const timer = setTimeout(() => this.onMediaOnlyTimeout(session.userId), this.MEDIA_ONLY_PROMPT_DELAY_MS);
+    const timer = setTimeout(() => void this.onMediaOnlyTimeout(session.userId), this.MEDIA_ONLY_PROMPT_DELAY_MS);
     this.activeTimers.set(session.userId, timer);
   }
 
-  private async archivePost(session: LiveArchiveSession, day: number): Promise<void> {
-    const postData: CreatePostInput = {
+  private archivePost(session: LiveArchiveSession, day: number): void {
+    const postData = {
       day,
       message_id: session.messageId,
       channel_id: session.channelId,
@@ -244,37 +243,59 @@ export class ArchiveSessionManager {
   }
 
   private async promptForOutOfSequence(session: LiveArchiveSession, expectedDay: number) {
-      const day = session.detectedDays[0] as number;
+      const day = session.detectedDays[0]!;
+      const forceArchiveLabel = this.client.dialogueService.get('session.button.forceArchive', { day });
+      const ignorePostLabel = this.client.dialogueService.get('session.button.ignorePost');
+
       const buttons = new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder().setCustomId(createArchiveButtonId('force', session.messageId, day)).setLabel(`Force Archive as Day ${day}`).setStyle(ButtonStyle.Danger),
-        new ButtonBuilder().setCustomId(createArchiveButtonId('ignore', session.messageId)).setLabel('Ignore This Post').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId(createArchiveButtonId('force', session.messageId, day)).setLabel(forceArchiveLabel).setStyle(ButtonStyle.Danger),
+        new ButtonBuilder().setCustomId(createArchiveButtonId('ignore', session.messageId)).setLabel(ignorePostLabel).setStyle(ButtonStyle.Secondary),
       );
-      const content = `⚠️ **Sequence Alert:** I expected Day \`${expectedDay}\`, but this post says Day \`${day}\`. How should I proceed? ([Original Message](${session.initialMessage.url}))`;
+      const content = this.client.dialogueService.get('session.alert.sequence', {
+        expectedDay,
+        day,
+        url: session.initialMessage.url,
+      });
       await this.notifyAdmins(content, [buttons]);
   }
   
   private async promptForAmbiguous(session: LiveArchiveSession) {
       const days = session.detectedDays.map(d => `\`Day ${d}\``).join(', ');
-      const content = `⚠️ **Manual Action Required:** I detected multiple days (${days}) in a single message. To prevent data errors, please use \`/manual-archive\` for each day, using message ID \`${session.messageId}\`. ([Original Message](${session.initialMessage.url}))`;
+      const content = this.client.dialogueService.get('session.alert.ambiguous', {
+        days,
+        messageId: session.messageId,
+        url: session.initialMessage.url,
+      });
       await this.notifyAdmins(content);
     }
   
     private async promptForLowConfidence(session: LiveArchiveSession) {
-      const day = session.detectedDays[0] as number;
+      const day = session.detectedDays[0]!;
+      const confirmArchiveLabel = this.client.dialogueService.get('session.button.confirmArchive', { day });
+      const ignoreLabel = this.client.dialogueService.get('session.button.ignore');
+
       const buttons = new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder().setCustomId(createArchiveButtonId('confirm', session.messageId, day)).setLabel(`Confirm Archive as Day ${day}`).setStyle(ButtonStyle.Success),
-        new ButtonBuilder().setCustomId(createArchiveButtonId('ignore', session.messageId)).setLabel('Ignore').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId(createArchiveButtonId('confirm', session.messageId, day)).setLabel(confirmArchiveLabel).setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId(createArchiveButtonId('ignore', session.messageId)).setLabel(ignoreLabel).setStyle(ButtonStyle.Secondary),
       );
-      const content = `🤔 **Possible Archive Detected:** I found the number \`${day}\` in this message, but the format was unclear. Do you want to archive this as Day ${day}? ([Original Message](${session.initialMessage.url}))`;
+      const content = this.client.dialogueService.get('session.alert.lowConfidence', {
+        day,
+        url: session.initialMessage.url,
+      });
       await this.notifyAdmins(content, [buttons]);
     }
   
     private async promptForMediaOnly(session: LiveArchiveSession) {
+      const addDayInfoLabel = this.client.dialogueService.get('session.button.addDayInfo');
+      const notArchiveLabel = this.client.dialogueService.get('session.button.notArchive');
+
       const buttons = new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder().setCustomId(createArchiveButtonId('add', session.messageId)).setLabel('Yes, Add Day Info').setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId(createArchiveButtonId('ignore', session.messageId)).setLabel('No, Not an Archive').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId(createArchiveButtonId('add', session.messageId)).setLabel(addDayInfoLabel).setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId(createArchiveButtonId('ignore', session.messageId)).setLabel(notArchiveLabel).setStyle(ButtonStyle.Secondary),
       );
-      const content = `I saw a new photo from Johan with no day information. Is this a Daily Johan archive? ([Original Message](${session.initialMessage.url}))`;
+      const content = this.client.dialogueService.get('session.alert.mediaOnly', {
+        url: session.initialMessage.url,
+      });
       await this.notifyAdmins(content, [buttons]);
     }
 
@@ -311,11 +332,14 @@ export class ArchiveSessionManager {
         const liveSession = sessionData ? await this.createLiveSession(sessionData) : await this.recreateLiveSessionFromMessage(messageId, interaction.channel as TextChannel);
         
         if (!liveSession) {
-          await interaction.update({ content: 'Error: Could not find the original message to archive.', components: [] });
+          await interaction.update({ content: this.client.dialogueService.get('session.reply.fail.noMessage'), components: [] });
           return;
         }
-        await this.archivePost(liveSession, day);
-        await interaction.update({ content: `✅ Action Confirmed. Post has been archived as Day ${day}.`, components: [] });
+        this.archivePost(liveSession, day);
+        await interaction.update({
+          content: this.client.dialogueService.get('session.reply.archiveSuccess', { day }),
+          components: [],
+        });
         liveSession.initialMessage.react('✅').catch(e => this.client.logger.warn("Couldn't react to original message", e));
         this.cleanupSession(liveSession.userId);
         break;
@@ -323,10 +347,10 @@ export class ArchiveSessionManager {
       case 'add': {
           const modal = new ModalBuilder()
               .setCustomId(createArchiveModalId('submitDayInfo', messageId))
-              .setTitle('Add Day Info to Archive');
+              .setTitle(this.client.dialogueService.get('session.modal.addDay.title'));
           const dayInput = new TextInputBuilder()
               .setCustomId('day_input')
-              .setLabel('What day number should this be?')
+              .setLabel(this.client.dialogueService.get('session.modal.addDay.label'))
               .setStyle(TextInputStyle.Short)
               .setRequired(true);
           modal.addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(dayInput));
@@ -335,7 +359,7 @@ export class ArchiveSessionManager {
       }
       case 'ignore':
         if (sessionData) this.cleanupSession(sessionData.userId);
-        await interaction.update({ content: 'OK, this post will be ignored.', components: [] });
+        await interaction.update({ content: this.client.dialogueService.get('session.reply.ignored'), components: [] });
         break;
     }
   }
@@ -349,23 +373,32 @@ export class ArchiveSessionManager {
       const day = parseInt(dayString, 10);
 
       if (isNaN(day) || day < 1) {
-          await interaction.reply({ content: 'Error: Invalid day number.', ephemeral: true });
+          await interaction.reply({
+            content: this.client.dialogueService.get('session.reply.fail.invalidDay'),
+            ephemeral: true,
+          });
           return;
       }
 
       if (this.posts.findByDay(day)) {
-          await interaction.reply({ content: `Error: Day ${day} already exists in the archive.`, ephemeral: true });
+          await interaction.reply({
+            content: this.client.dialogueService.get('session.reply.fail.exists', { day }),
+            ephemeral: true,
+          });
           return;
       }
 
       const liveSession = await this.recreateLiveSessionFromMessage(messageId, interaction.channel as TextChannel);
       if (!liveSession) {
-          await interaction.reply({ content: 'Error: Could not find the original message to archive.', ephemeral: true });
+          await interaction.reply({ content: this.client.dialogueService.get('session.reply.fail.noMessage'), ephemeral: true });
           return;
       }
 
-      await this.archivePost(liveSession, day);
-      await interaction.reply({ content: `✅ Success! Post has been archived as Day ${day}.`, ephemeral: true });
+      this.archivePost(liveSession, day);
+      await interaction.reply({
+        content: this.client.dialogueService.get('session.reply.manualSuccess', { day }),
+        ephemeral: true,
+      });
       liveSession.initialMessage.react('✅').catch(e => this.client.logger.warn("Couldn't react to original message", e));
 
       this.cleanupSession(liveSession.userId);

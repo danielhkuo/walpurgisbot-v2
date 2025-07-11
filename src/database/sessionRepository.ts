@@ -58,8 +58,8 @@ export class SessionRepository {
             userId: row.user_id,
             channelId: row.channel_id,
             messageId: row.message_id,
-            mediaUrls: JSON.parse(row.media_urls),
-            detectedDays: JSON.parse(row.detected_days),
+            mediaUrls: JSON.parse(row.media_urls) as string[],
+            detectedDays: JSON.parse(row.detected_days) as number[],
             confidence: row.confidence,
             expiresAt: row.expires_at,
         };
@@ -77,14 +77,18 @@ export class SessionRepository {
 
     public findAll(): SessionData[] {
         const rows = this.findAllStmt.all() as SessionRow[];
-        return rows.map(this.rowToData);
+        return rows.map(row => this.rowToData(row));
     }
 
     public upsert(data: SessionData): void {
         this.upsertStmt.run({
-            ...data,
+            userId: data.userId,
+            channelId: data.channelId,
+            messageId: data.messageId,
             mediaUrls: JSON.stringify(data.mediaUrls),
             detectedDays: JSON.stringify(data.detectedDays),
+            confidence: data.confidence,
+            expiresAt: data.expiresAt,
         });
     }
 

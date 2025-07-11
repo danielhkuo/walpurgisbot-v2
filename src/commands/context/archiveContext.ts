@@ -6,15 +6,12 @@ import { presentManualArchiveModal } from '../../lib/interaction-helpers/manualA
 
 export const command: MessageContextMenuCommand = {
     data: new ContextMenuCommandBuilder()
-        .setName('Manual Archive Post')
+        .setName('Manual Archive Post') // Dialogue key: context.archive.name
         .setType(ApplicationCommandType.Message)
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
         .setDMPermission(false),
 
     async execute(interaction: MessageContextMenuCommandInteraction, client: Client) {
-        const targetMessage = interaction.targetMessage;
-
-        // Delegate all logic to the shared modal presenter.
-        await presentManualArchiveModal(interaction, client, targetMessage);
+        return await presentManualArchiveModal(interaction, client, interaction.targetMessage);
     },
 };

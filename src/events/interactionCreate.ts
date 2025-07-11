@@ -1,18 +1,15 @@
 // src/events/interactionCreate.ts
-import { Events, type Interaction, type Client, PermissionFlagsBits } from 'discord.js';
+import type { Client, Interaction, PermissionsBitField } from 'discord.js';
+import { PermissionFlagsBits } from 'discord.js';
 import type { Event } from '../types/event';
-import { config } from '../config';
 import { parseId } from '../lib/customIdManager';
 
-// Helper function to check for admin permissions for component interactions
-function hasAdminPermissions(interaction: Interaction): boolean {
-    if (!interaction.memberPermissions) return false;
-    // Unify permission check with the declarative one used in commands (ManageGuild).
-    return interaction.memberPermissions.has(PermissionFlagsBits.ManageGuild);
-}
+const hasAdminPermissions = (interaction: { memberPermissions?: PermissionsBitField | null }): boolean => {
+    return interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild) ?? false;
+};
 
-export const event: Event<Events.InteractionCreate> = {
-    name: Events.InteractionCreate,
+export const event: Event<'interactionCreate'> = {
+    name: 'interactionCreate',
     async execute(client: Client, interaction: Interaction) {
         // --- Component Interaction Handling (Buttons, Modals, etc.) ---
         if (interaction.isButton() || interaction.isModalSubmit()) {
@@ -23,7 +20,7 @@ export const event: Event<Events.InteractionCreate> = {
                 // All session-managed interactions require admin privileges.
                 if (!hasAdminPermissions(interaction)) {
                     await interaction.reply({
-                        content: 'You do not have permission to perform this action.',
+                        content: client.dialogueService.get('error.noPermission'),
                         ephemeral: true,
                     });
                     return;
@@ -47,7 +44,9 @@ export const event: Event<Events.InteractionCreate> = {
                 client.logger.warn({ commandName: interaction.commandName }, 'No command found.');
                 if (interaction.isChatInputCommand()) {
                     await interaction.reply({
-                        content: `No command matching \`/${interaction.commandName}\` was found.`,
+                        content: client.dialogueService.get('error.command.notFound', {
+                            commandName: interaction.commandName,
+                        }),
                         ephemeral: true,
                     });
                 }
@@ -74,12 +73,12 @@ export const event: Event<Events.InteractionCreate> = {
                 client.logger.error({ err: error, commandName: interaction.commandName }, 'Error executing command.');
                 if (interaction.replied || interaction.deferred) {
                     await interaction.followUp({
-                        content: 'There was an error while executing this command!',
+                        content: client.dialogueService.get('error.command.execution'),
                         ephemeral: true,
                     });
                 } else {
                     await interaction.reply({
-                        content: 'There was an error while executing this command!',
+                        content: client.dialogueService.get('error.command.execution'),
                         ephemeral: true,
                     });
                 }

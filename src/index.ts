@@ -1,20 +1,20 @@
 // src/index.ts
-import { Client, GatewayIntentBits, Collection } from 'discord.js';
-import { config } from './config';
-import logger from './logger';
+import { Client, Collection, GatewayIntentBits } from 'discord.js';
 import db from './database';
 import { PostRepository } from './database/postRepository';
 import { SettingsRepository } from './database/settingsRepository';
 import { SessionRepository } from './database/sessionRepository';
 import { NotificationService } from './services/notificationService';
 import { ArchiveSessionManager } from './services/archiveSessionManager';
+import { DialogueService } from './services/dialogueService';
 import type { Command } from './types/command';
 import type { MessageContextMenuCommand } from './types/contextMenuCommand';
 import { loadCommands, loadEvents } from './lib/handler';
+import logger from './logger';
 import type { Database } from 'better-sqlite3';
 
 declare module 'discord.js' {
-    export interface Client {
+    interface Client {
         commands: Collection<string, Command | MessageContextMenuCommand>;
         db: Database;
         posts: PostRepository;
@@ -22,16 +22,20 @@ declare module 'discord.js' {
         sessions: SessionRepository;
         notificationService: NotificationService;
         archiveSessionManager: ArchiveSessionManager;
+        dialogueService: DialogueService;
         logger: typeof logger;
     }
 }
 
-async function main() {
-    const client = new Client({
-        intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent],
-    }) as Client;
+const client = new Client({
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent,
+    ],
+});
 
-    // --- DEPENDENCY INJECTION ---
+async function setupClient() {
     client.logger = logger;
     client.db = db;
     client.posts = new PostRepository(client.db);
@@ -39,16 +43,23 @@ async function main() {
     client.sessions = new SessionRepository(client.db);
     client.notificationService = new NotificationService(client, client.settings, client.posts);
     client.archiveSessionManager = new ArchiveSessionManager(client, client.posts, client.sessions);
+    client.dialogueService = new DialogueService(client);
     client.commands = new Collection();
     
     await loadCommands(client);
     await loadEvents(client);
-    
-    client.logger.info('Starting bot...');    
-    await client.login(config.TOKEN);
 }
 
-main().catch(error => {
-    logger.fatal({ err: error }, 'Unhandled error in main function.');
-    process.exit(1);
-});
+async function main() {
+    try {
+        await setupClient();
+        await client.login(process.env.DISCORD_TOKEN);
+    } catch (error) {
+        logger.fatal({ err: error }, 'Failed to start bot');
+        process.exit(1);
+    }
+}
+
+void main();
+
+export default client;

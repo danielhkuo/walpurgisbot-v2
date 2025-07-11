@@ -13,12 +13,15 @@ const MAX_FILE_SIZE_BYTES = 24 * 1024 * 1024;
 export const command: Command = {
     data: new SlashCommandBuilder()
         .setName('export')
-        .setDescription('Exports the entire archive database to a JSON file.')
+        .setDescription('Exports the entire archive database to a JSON file.') // Dialogue key: export.desc
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
         .setDMPermission(false),
 
     async execute(interaction: ChatInputCommandInteraction, client: Client) {
-        await interaction.reply({ content: '⏳ Generating database export... this may take a moment.', ephemeral: true });
+        await interaction.reply({
+            content: client.dialogueService.get('export.generating'),
+            ephemeral: true,
+        });
 
         const tempFilePath = path.join(os.tmpdir(), `walpurgis-export-${Date.now()}.json`);
 
@@ -32,11 +35,11 @@ export const command: Command = {
                 if (!isFirst) {
                     writeStream.write(',\n');
                 }
+                // The generator already returns the post with a `media` array of strings.
                 const line = JSON.stringify(post, null, 2);
                 writeStream.write(line);
                 isFirst = false;
             }
-            // Add a final newline if any posts were written
             if (!isFirst) {
                 writeStream.write('\n');
             }
@@ -45,18 +48,17 @@ export const command: Command = {
             writeStream.end();
             await finished(writeStream);
 
-            // If isFirst is still true, the loop never ran.
             if (isFirst) {
                 await interaction.editReply({
-                    content: 'ℹ️ The archive is empty. Nothing to export.',
+                    content: client.dialogueService.get('export.empty'),
                 });
-                return; // Early return, cleanup will still run
+                return;
             }
 
             const stats = await fsPromises.stat(tempFilePath);
             if (stats.size > MAX_FILE_SIZE_BYTES) {
                 await interaction.editReply({
-                    content: `❌ **Export Failed:** The database is too large to send as a single file via Discord (over 24MB). Please contact the bot developer for a manual export.`,
+                    content: client.dialogueService.get('export.fail.tooLarge'),
                 });
                 return;
             }
@@ -67,28 +69,23 @@ export const command: Command = {
 
             try {
                 await interaction.user.send({
-                    content: 'Here is your database export:',
+                    content: client.dialogueService.get('export.dm.content'),
                     files: [attachment],
                 });
                 await interaction.editReply({
-                    content: '✅ The database export has been sent to your DMs.',
+                    content: client.dialogueService.get('export.success.dm'),
                 });
-            } catch (dmError) {
+            } catch (dmError: unknown) {
                 client.logger.warn({ err: dmError, userId: interaction.user.id }, 'Failed to send DM for export.');
-                await interaction.editReply({
-                    content:
-                        '❌ **Could not send DM.** Please check your privacy settings to allow DMs from this server, then try again.',
-                });
+                await interaction.editReply({ content: client.dialogueService.get('export.fail.dm') });
             }
-        } catch (error) {
+        } catch (error: unknown) {
             client.logger.error({ err: error }, 'An error occurred during database export.');
-            await interaction.editReply({
-                content: 'An unexpected error occurred while generating the export. Please check the logs.',
-            });
+            await interaction.editReply({ content: client.dialogueService.get('error.export.generic') });
         } finally {
             // Ensure temporary file is always cleaned up
-            await fsPromises.unlink(tempFilePath).catch(err => {
-                client.logger.warn({ err }, `Failed to clean up temporary export file: ${tempFilePath}`);
+            await fsPromises.unlink(tempFilePath).catch((err: unknown) => {
+                client.logger.warn({ err, tempFilePath }, 'Failed to clean up temporary export file.');
             });
         }
     },

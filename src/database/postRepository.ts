@@ -109,7 +109,7 @@ export class PostRepository {
 
         if ('media' in post && Array.isArray(post.media)) {
           // This is a V2 post object. The type is already string[].
-          mediaUrls = post.media;
+          mediaUrls = post.media as string[];
         } else {
           // This is a V1 post object. Collect and filter potential URLs.
           const potentialUrls = [
@@ -161,7 +161,7 @@ export class PostRepository {
       const post = PostSchema.parse(postRow);
       const media = MediaAttachmentSchema.array().parse(mediaRows);
       return { post, media };
-    } catch (error) {
+    } catch (error: unknown) {
       logger.error({ err: error, day }, 'Database data failed validation for day.');
       return null;
     }
@@ -171,7 +171,7 @@ export class PostRepository {
     const rows = this.findByMessageIdStmt.all(messageId);
     try {
       return PostSchema.array().parse(rows);
-    } catch (error) {
+    } catch (error: unknown) {
       logger.error(
         { err: error, messageId },
         'Database data failed validation for messageId query.',
@@ -194,9 +194,9 @@ export class PostRepository {
       try {
         const post = PostSchema.parse(postData);
         // Safely parse the JSON array string, defaulting to an empty array.
-        const media = media_urls_json ? JSON.parse(media_urls_json) : [];
+        const media: string[] = media_urls_json ? JSON.parse(media_urls_json) as string[] : [];
         yield { ...post, media };
-      } catch (error) {
+      } catch (error: unknown) {
         logger.error(
           { err: error, row },
           'Invalid post data from database during findAllWithMedia, skipping.',
@@ -217,11 +217,21 @@ export class PostRepository {
 
   public getMaxDay(): number | null {
     const row = this.maxDayStmt.get();
-    return MaxDaySchema.parse(row).maxDay;
+    try {
+      return MaxDaySchema.parse(row).maxDay;
+    } catch (error: unknown) {
+      logger.error({ err: error, row }, 'Failed to parse maxDay from database.');
+      return null;
+    }
   }
 
   public getArchivedDaysInRange(start: number, end: number): number[] {
     const rows = this.rangeStmt.all(start, end);
-    return DayListSchema.parse(rows).map(row => row.day);
+    try {
+      return DayListSchema.parse(rows).map(row => row.day);
+    } catch (error: unknown) {
+      logger.error({ err: error, rows, start, end }, 'Failed to parse day range from database.');
+      return [];
+    }
   }
 }

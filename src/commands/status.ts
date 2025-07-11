@@ -10,110 +10,116 @@ import {
 import type { ChatInputCommandInteraction, Client } from 'discord.js';
 import type { Command } from '../types/command';
 
-const PAGE_SIZE = 20;
-
 export const command: Command = {
     data: new SlashCommandBuilder()
         .setName('status')
-        .setDescription('Shows which days in a range are archived or missing.')
+        .setDescription('Shows which days in a range are archived or missing.') // Dialogue key: status.desc
         .addIntegerOption(option =>
-            option.setName('start').setDescription('The starting day number.').setMinValue(1),
+            option.setName('start').setDescription('The starting day number.').setMinValue(1), // Dialogue key: status.option.start.desc
         )
-        .addIntegerOption(option => option.setName('end').setDescription('The ending day number.').setMinValue(1)),
+        .addIntegerOption(option => option.setName('end').setDescription('The ending day number.').setMinValue(1)), // Dialogue key: status.option.end.desc
     async execute(interaction: ChatInputCommandInteraction, client: Client) {
         await interaction.deferReply({ ephemeral: true });
 
-        let start = interaction.options.getInteger('start') ?? 1;
-        let end = interaction.options.getInteger('end');
+        const start = interaction.options.getInteger('start') ?? 1;
+        const maxDay = client.posts.getMaxDay();
+        const end = interaction.options.getInteger('end') ?? maxDay ?? 1;
 
-        if (!end) {
-            // default to a single-page window when the user omits --end
-            end = start + PAGE_SIZE - 1;
-        }
-
-        if (start > end) {
-            await interaction.editReply('Error: The start day must be less than or equal to the end day.');
+        if (end < start) {
+            await interaction.editReply(client.dialogueService.get('status.fail.startAfterEnd'));
             return;
         }
 
-        const totalDays = end - start + 1;
-        const totalPages = Math.max(1, Math.ceil(totalDays / PAGE_SIZE));
-        let currentPage = 0;
+        if (start > end) {
+            await interaction.editReply(client.dialogueService.get('status.fail.startAfterEnd'));
+            return;
+        }
+
+        // Get all archived days in the range
+        const archivedDays: Set<number> = new Set();
+        for (let day = start; day <= end; day++) {
+            if (client.posts.findByDay(day)) {
+                archivedDays.add(day);
+            }
+        }
+
+        const DAYS_PER_PAGE = 25;
+        const totalPages = Math.ceil((end - start + 1) / DAYS_PER_PAGE);
 
         const generateEmbed = (page: number) => {
-            const pageStartDay = start + page * PAGE_SIZE;
-            const pageEndDay = Math.min(end, pageStartDay + PAGE_SIZE - 1);
+            const pageStartDay = start + page * DAYS_PER_PAGE;
+            const pageEndDay = Math.min(start + (page + 1) * DAYS_PER_PAGE - 1, end);
+            const archivedInPage = new Set([...archivedDays].filter(day => day >= pageStartDay && day <= pageEndDay));
 
-            // Fetch only the data for the current page from the database
-            const archivedInPage = new Set(client.posts.getArchivedDaysInRange(pageStartDay, pageEndDay));
-            
             const statuses: string[] = [];
             for (let day = pageStartDay; day <= pageEndDay; day++) {
                 const status = archivedInPage.has(day) ? '✅' : '❌';
-                statuses.push(`Day ${day}: ${status}`);
+                statuses.push(client.dialogueService.get('status.embed.dayStatus', { day, status }));
             }
 
-            const pageContent = statuses.join('\n') || 'No data for this page.';
+            const pageContent = statuses.join('\n') || client.dialogueService.get('status.embed.noData');
 
             return new EmbedBuilder()
-                .setTitle(`Archive Status: Days ${start} - ${end}`)
+                .setTitle(client.dialogueService.get('status.embed.title', { start, end }))
                 .setDescription(pageContent)
                 .setColor('#5865F2')
-                .setFooter({ text: `Page ${page + 1} of ${totalPages}` });
+                .setFooter({ text: client.dialogueService.get('status.embed.footer', { page: page + 1, totalPages }) });
         };
 
         const generateButtons = (page: number) => {
-            return new ActionRowBuilder<ButtonBuilder>().addComponents(
-                new ButtonBuilder()
-                    .setCustomId('first')
-                    .setLabel('⏮️ First')
-                    .setStyle(ButtonStyle.Primary)
-                    .setDisabled(page === 0),
-                new ButtonBuilder()
-                    .setCustomId('prev')
-                    .setLabel('◀️ Prev')
-                    .setStyle(ButtonStyle.Primary)
-                    .setDisabled(page === 0),
-                new ButtonBuilder()
-                    .setCustomId('next')
-                    .setLabel('Next ▶️')
-                    .setStyle(ButtonStyle.Primary)
-                    .setDisabled(page >= totalPages - 1),
-                new ButtonBuilder()
-                    .setCustomId('last')
-                    .setLabel('Last ⏭️')
-                    .setStyle(ButtonStyle.Primary)
-                    .setDisabled(page >= totalPages - 1),
-            );
+            const row = new ActionRowBuilder<ButtonBuilder>();
+            const prevButton = new ButtonBuilder()
+                .setCustomId('prev')
+                .setLabel('Previous')
+                .setStyle(ButtonStyle.Primary)
+                .setDisabled(page === 0);
+            const nextButton = new ButtonBuilder()
+                .setCustomId('next')
+                .setLabel('Next')
+                .setStyle(ButtonStyle.Primary)
+                .setDisabled(page === totalPages - 1);
+            row.addComponents(prevButton, nextButton);
+            return [row];
         };
 
-        const reply = await interaction.editReply({
-            embeds: [generateEmbed(currentPage)],
-            components: [generateButtons(currentPage)],
-        });
-
-        const collector = reply.createMessageComponentCollector({
-            componentType: ComponentType.Button,
-            filter: i => i.user.id === interaction.user.id,
-            time: 300_000, // 5 minutes
-        });
-
-        collector.on('collect', async i => {
-            if (i.customId === 'first') currentPage = 0;
-            if (i.customId === 'prev') currentPage--;
-            if (i.customId === 'next') currentPage++;
-            if (i.customId === 'last') currentPage = totalPages - 1;
-
-            await i.update({
+        if (totalPages === 1) {
+            await interaction.editReply({ embeds: [generateEmbed(0)] });
+        } else {
+            let currentPage = 0;
+            const reply = await interaction.editReply({
                 embeds: [generateEmbed(currentPage)],
-                components: [generateButtons(currentPage)],
+                components: generateButtons(currentPage),
             });
-        });
 
-        collector.on('end', async () => {
-            // Edit the message to remove buttons after timeout
-            const finalEmbed = generateEmbed(currentPage);
-            await interaction.editReply({ embeds: [finalEmbed], components: [] });
-        });
+            const collector = reply.createMessageComponentCollector({
+                componentType: ComponentType.Button,
+                time: 300_000, // 5 minutes
+            });
+
+            collector.on('collect', i => {
+                void (async () => {
+                    if (i.customId === 'prev' && currentPage > 0) {
+                        currentPage--;
+                    } else if (i.customId === 'next' && currentPage < totalPages - 1) {
+                        currentPage++;
+                    }
+
+                    await i.update({
+                        embeds: [generateEmbed(currentPage)],
+                        components: generateButtons(currentPage),
+                    });
+                })();
+            });
+
+            collector.on('end', () => {
+                void (async () => {
+                    try {
+                        await interaction.editReply({ components: [] });
+                    } catch {
+                        client.logger.warn('Failed to clear interaction components after timeout.');
+                    }
+                })();
+            });
+        }
     },
 };

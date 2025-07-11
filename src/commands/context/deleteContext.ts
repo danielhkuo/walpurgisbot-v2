@@ -7,26 +7,24 @@ import { presentDeleteConfirmation } from '../../lib/interaction-helpers/deleteC
 
 export const command: MessageContextMenuCommand = {
     data: new ContextMenuCommandBuilder()
-        .setName('Delete Archive Entry')
+        .setName('Delete Archive Entry') // Dialogue key: context.delete.name
         .setType(ApplicationCommandType.Message)
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
         .setDMPermission(false),
 
     async execute(interaction: MessageContextMenuCommandInteraction, client: Client) {
-        const targetMessage = interaction.targetMessage;
-        const associatedPosts: Post[] = client.posts.findPostsByMessageId(targetMessage.id);
+        const messageId = interaction.targetMessage.id;
+        const associatedPosts: Post[] = client.posts.findPostsByMessageId(messageId);
 
         if (associatedPosts.length === 0) {
             await interaction.reply({
-                content: 'This message is not registered as an archive entry.',
+                content: client.dialogueService.get('context.delete.fail.notRegistered'),
                 ephemeral: true,
             });
             return;
         }
 
-        const affectedDays = associatedPosts.map(p => p.day);
-
-        // Delegate the entire confirmation flow to the shared helper function.
-        await presentDeleteConfirmation(interaction, client, targetMessage.id, affectedDays);
+        const affectedDays = associatedPosts.map(post => post.day);
+        await presentDeleteConfirmation(interaction, client, messageId, affectedDays);
     },
 };

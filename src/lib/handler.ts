@@ -1,61 +1,67 @@
 // src/lib/handler.ts
+import fs from 'fs/promises';
+import path from 'path';
 import type { Client } from 'discord.js';
-import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import type { Command } from '../types/command';
-import type { Event } from '../types/event';
 import type { MessageContextMenuCommand } from '../types/contextMenuCommand';
+import type { Event } from '../types/event';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-async function* getCommandFiles(dir: string): AsyncGenerator<string> {
-    const dirents = await fs.promises.readdir(dir, { withFileTypes: true });
+async function* getFiles(dir: string, extension: string): AsyncGenerator<string> {
+    const dirents = await fs.readdir(dir, { withFileTypes: true });
     for (const dirent of dirents) {
         const res = path.resolve(dir, dirent.name);
         if (dirent.isDirectory()) {
-            yield* getCommandFiles(res);
-        } else if (res.endsWith('.ts')) {
+            yield* getFiles(res, extension);
+        } else if (res.endsWith(extension)) {
             yield res;
         }
     }
 }
 
-export async function loadCommands(client: Client) {
+export async function loadCommands(client: Client): Promise<void> {
     const commandsPath = path.join(__dirname, '../commands');
-
-    for await (const filePath of getCommandFiles(commandsPath)) {
-        try {
-            const { command } = (await import(filePath)) as { command: Command | MessageContextMenuCommand };
-            if ('data' in command && 'execute' in command) {
-                client.commands.set(command.data.name, command);
-                client.logger.debug(`Loaded command: ${command.data.name}`);
-            } else {
-                client.logger.warn(`The command at ${filePath} is missing a required "data" or "execute" property.`);
+    
+    try {
+        for await (const filePath of getFiles(commandsPath, '.ts')) {
+            try {
+                const { command } = await import(filePath) as { command: Command | MessageContextMenuCommand };
+                if (command && command.data) {
+                    client.commands.set(command.data.name, command);
+                    client.logger.info(`Loaded command: ${command.data.name}`);
+                }
+            } catch (error) {
+                client.logger.error({ err: error, filePath }, 'Failed to load command');
             }
-        } catch (error) {
-            client.logger.error({ err: error, file: filePath }, 'Error loading a command file.');
         }
+    } catch (error) {
+        client.logger.error({ err: error }, 'Failed to load commands directory');
     }
 }
 
-export async function loadEvents(client: Client) {
+export async function loadEvents(client: Client): Promise<void> {
     const eventsPath = path.join(__dirname, '../events');
-    const eventFiles = fs.readdirSync(eventsPath).filter(file => file.endsWith('.ts'));
-
-    for (const file of eventFiles) {
-        try {
-            const filePath = path.join(eventsPath, file);
-            const { event } = (await import(filePath)) as { event: Event };
-            if (event.once) {
-                client.once(event.name, (...args) => event.execute(client, ...args));
-            } else {
-                client.on(event.name, (...args) => event.execute(client, ...args));
+    
+    try {
+        for await (const filePath of getFiles(eventsPath, '.ts')) {
+            try {
+                const { event } = await import(filePath) as { event: Event };
+                if (event && event.name) {
+                    if (event.once) {
+                        client.once(event.name, (...args) => {
+                            void event.execute(client, ...args);
+                        });
+                    } else {
+                        client.on(event.name, (...args) => {
+                            void event.execute(client, ...args);
+                        });
+                    }
+                    client.logger.info(`Loaded event: ${event.name}`);
+                }
+            } catch (error) {
+                client.logger.error({ err: error, filePath }, 'Failed to load event');
             }
-            client.logger.debug(`Loaded event: ${event.name}`);
-        } catch (error) {
-            client.logger.error({ err: error, file }, 'Error loading an event file.');
         }
+    } catch (error) {
+        client.logger.error({ err: error }, 'Failed to load events directory');
     }
 }
