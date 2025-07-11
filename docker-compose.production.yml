@@ -1,10 +1,33 @@
 services:
   bot:
     image: ghcr.io/danielhkuo/walpurgisbot-v2:latest
+
+    # If your server is ARM (Raspberry Pi, Apple Silicon, etc.) add:
+    # platform: linux/arm64
+    #–– For x86_64 hosts leave it out or set linux/amd64.
+
     container_name: walpurgisbot-v2
     restart: unless-stopped
+
+    # The Compose-Manager plugin (and plain docker-compose) run from the
+    # project folder, so a simple ".env" automatically picks up the file
+    # you edit in Unraid’s GUI or commit alongside this compose.
     env_file:
       - .env
+
+    # Named volume → Docker sets the correct UID/GID the first time it’s created,
+    # eliminating the SQLITE_CANTOPEN loop without manual chown.
     volumes:
-      # Use the absolute path to your persistent storage on the server.
-      - /mnt/user/appdata/walpurgisbot-v2:/app/data
+      - walpurgisbot_data:/app/data
+
+    # Uncomment once if you *ever* need to start as root (e.g. to pre-populate
+    # the DB) then remove it again:
+    # user: "0:0"
+
+volumes:
+  walpurgisbot_data:
+    driver_opts:
+      type: none
+      o: bind
+      # 👉 CHANGE THIS PATH to wherever you keep persistent app data
+      device: /mnt/user/appdata/walpurgisbot-v2
