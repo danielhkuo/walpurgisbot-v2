@@ -1,13 +1,14 @@
 name: Publish to GHCR
 
-# Grant this job permissions to read code and write packages
+# This permissions block is CRITICAL. It gives the GITHUB_TOKEN
+# permission to push a package (your Docker image) to your repo.
 permissions:
-  contents: read          # so actions/checkout can fetch your code
-  packages: write         # so GITHUB_TOKEN can publish the image :contentReference[oaicite:0]{index=0}
+  contents: read
+  packages: write
 
 on:
   push:
-    branches: [main]
+    branches: [main] # The workflow runs every time you push to the 'main' branch.
 
 jobs:
   build-and-push:
@@ -17,16 +18,21 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # This logs into GHCR. No PAT is needed because the GITHUB_TOKEN
+      # has the 'packages: write' permission we granted above.
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}  # No PAT needed :contentReference[oaicite:1]{index=1}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
+      # This is the main event: it builds your Dockerfile and pushes it.
       - name: Build & push Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
           push: true
-          tags: ghcr.io/${{ github.repository_owner }}/walpurgisbot-v2:latest  # your image repo :contentReference[oaicite:2]{index=2}
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/walpurgisbot-v2:latest
+            ghcr.io/${{ github.repository_owner }}/walpurgisbot-v2:${{ github.sha }}
