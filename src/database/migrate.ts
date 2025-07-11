@@ -1,14 +1,12 @@
 // src/database/migrate.ts
 import type { Database } from 'bun:sqlite';
-import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import type { Logger } from 'pino';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// By explicitly listing migration files, we ensure they run in order.
+const MIGRATION_FILES = ['000_initial_schema.sql'];
 
-export function runMigrations(db: Database, logger: Logger) {
+export async function runMigrations(db: Database, logger: Logger): Promise<void> {
     logger.info('Running database migrations...');
 
     // 1. Create migrations table if it doesn't exist
@@ -21,24 +19,21 @@ export function runMigrations(db: Database, logger: Logger) {
     `);
 
     // 2. Get all migrations that have already been run
-    const ranMigrations = db.prepare('SELECT name FROM migrations').all() as { name: string }[];
+    const ranMigrations = db.query('SELECT name FROM migrations').all() as { name: string }[];
     const ranMigrationNames = new Set(ranMigrations.map(m => m.name));
 
-    // 3. Read all available migration files
-    const migrationsDir = path.join(__dirname, 'migrations');
-    const availableMigrations = fs
-        .readdirSync(migrationsDir)
-        .filter(file => file.endsWith('.sql'))
-        .sort(); // Ensure they run in order (e.g., 001, 002, ...)
-
-    // 4. Run any migrations that have not been run yet
+    // 3. Run any migrations that have not been run yet
     const insertMigrationStmt = db.prepare('INSERT INTO migrations (name) VALUES (?)');
 
-    for (const migrationFile of availableMigrations) {
+    for (const migrationFile of MIGRATION_FILES) {
         if (!ranMigrationNames.has(migrationFile)) {
             logger.info(`Running migration: ${migrationFile}`);
             try {
-                const sql = fs.readFileSync(path.join(migrationsDir, migrationFile), 'utf8');
+                // Bun.file() combined with --compile embeds the asset into the binary.
+                // import.meta.dir gives us the correct path relative to the source file.
+                const migrationPath = path.join(import.meta.dir, 'migrations', migrationFile);
+                const sql = await Bun.file(migrationPath).text();
+                
                 db.exec(sql);
                 insertMigrationStmt.run(migrationFile);
             } catch (error) {

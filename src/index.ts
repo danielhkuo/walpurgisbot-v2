@@ -1,6 +1,7 @@
 // src/index.ts
 import { Client, Collection, GatewayIntentBits } from 'discord.js';
 import db from './database';
+import { runMigrations } from './database/migrate';
 import { PostRepository } from './database/postRepository';
 import { SettingsRepository } from './database/settingsRepository';
 import { SessionRepository } from './database/sessionRepository';
@@ -53,7 +54,10 @@ async function setupClient() {
 
 async function main() {
     try {
+        await runMigrations(db, logger);
+
         await setupClient();
+        
         await client.login(config.TOKEN);
     } catch (error) {
         logger.fatal({ err: error }, 'Failed to start bot');
