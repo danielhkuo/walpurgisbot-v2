@@ -11,7 +11,8 @@ import type { Command } from './types/command';
 import type { MessageContextMenuCommand } from './types/contextMenuCommand';
 import { loadCommands, loadEvents } from './lib/handler';
 import logger from './logger';
-import type { Database } from 'better-sqlite3';
+import { config } from './config';
+import type { Database } from 'bun:sqlite';
 
 declare module 'discord.js' {
     interface Client {
@@ -37,7 +38,7 @@ const client = new Client({
 
 async function setupClient() {
     client.logger = logger;
-    client.db = db;
+    client.db = db as Database;
     client.posts = new PostRepository(client.db);
     client.settings = new SettingsRepository(client.db);
     client.sessions = new SessionRepository(client.db);
@@ -53,7 +54,7 @@ async function setupClient() {
 async function main() {
     try {
         await setupClient();
-        await client.login(process.env.DISCORD_TOKEN);
+        await client.login(config.TOKEN);
     } catch (error) {
         logger.fatal({ err: error }, 'Failed to start bot');
         process.exit(1);

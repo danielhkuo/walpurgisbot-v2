@@ -1,5 +1,5 @@
 // src/database/sessionRepository.ts
-import type { Database, Statement } from 'better-sqlite3';
+import type { Database, Statement } from 'bun:sqlite';
 import type { PostConfidence } from '../types/session';
 
 // This defines the structure of the session data we'll work with.
@@ -66,18 +66,18 @@ export class SessionRepository {
     }
 
     public get(userId: string): SessionData | null {
-        const row = this.getStmt.get(userId) as SessionRow | undefined;
+        const row = this.getStmt.get(userId) as SessionRow | null;
         return row ? this.rowToData(row) : null;
     }
 
     public getByMessageId(messageId: string): SessionData | null {
-        const row = this.getByMessageIdStmt.get(messageId) as SessionRow | undefined;
+        const row = this.getByMessageIdStmt.get(messageId) as SessionRow | null;
         return row ? this.rowToData(row) : null;
     }
 
     public findAll(): SessionData[] {
         const rows = this.findAllStmt.all() as SessionRow[];
-        return rows.map(row => this.rowToData(row));
+        return rows.map(this.rowToData);
     }
 
     public upsert(data: SessionData): void {

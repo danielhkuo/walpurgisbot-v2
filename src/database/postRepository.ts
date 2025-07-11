@@ -2,7 +2,7 @@
 // Repository for handling all database operations related to posts
 // and their media attachments.
 
-import type { Database, Statement } from 'better-sqlite3';
+import type { Database, Statement } from 'bun:sqlite';
 import {
   PostSchema,
   MediaAttachmentSchema,
@@ -84,14 +84,14 @@ export class PostRepository {
         this.mediaInsertStmt.run(data.day, url);
       }
       return this.findByDay(data.day);
-    });
+    }) as unknown as typeof this.createTransaction;
 
     this.importTransaction = this.db.transaction((posts: ImportPost[]) => {
       let importedCount = 0;
       let skippedCount = 0;
 
       for (const post of posts) {
-        const existing = this.findByDayStmt.get(post.day);
+        const existing = this.findByDayStmt.get(post.day) as Post | undefined;
         if (existing) {
           skippedCount++;
           continue; // Skip this day, move to the next.
@@ -109,7 +109,7 @@ export class PostRepository {
 
         if ('media' in post && Array.isArray(post.media)) {
           // This is a V2 post object. The type is already string[].
-          mediaUrls = post.media as string[];
+          mediaUrls = post.media;
         } else {
           // This is a V1 post object. Collect and filter potential URLs.
           const potentialUrls = [
@@ -130,7 +130,7 @@ export class PostRepository {
       }
 
       return { importedCount, skippedCount };
-    });
+    }) as unknown as typeof this.importTransaction;
   }
 
   /**
@@ -155,7 +155,7 @@ export class PostRepository {
     const postRow = this.findByDayStmt.get(day);
     if (!postRow) return null;
 
-    const mediaRows = this.findMediaByDayStmt.all(day);
+    const mediaRows = this.findMediaByDayStmt.all(day) as MediaAttachment[];
 
     try {
       const post = PostSchema.parse(postRow);
@@ -168,7 +168,7 @@ export class PostRepository {
   }
 
   public findPostsByMessageId(messageId: string): Post[] {
-    const rows = this.findByMessageIdStmt.all(messageId);
+    const rows = this.findByMessageIdStmt.all(messageId) as Post[];
     try {
       return PostSchema.array().parse(rows);
     } catch (error: unknown) {
@@ -216,7 +216,7 @@ export class PostRepository {
   }
 
   public getMaxDay(): number | null {
-    const row = this.maxDayStmt.get();
+    const row = this.maxDayStmt.get() as { maxDay: number | null } | null;
     try {
       return MaxDaySchema.parse(row).maxDay;
     } catch (error: unknown) {
@@ -226,7 +226,7 @@ export class PostRepository {
   }
 
   public getArchivedDaysInRange(start: number, end: number): number[] {
-    const rows = this.rangeStmt.all(start, end);
+    const rows = this.rangeStmt.all(start, end) as { day: number }[];
     try {
       return DayListSchema.parse(rows).map(row => row.day);
     } catch (error: unknown) {

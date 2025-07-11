@@ -151,79 +151,76 @@ export class NotificationService {
   private async runDailyReminderCheck() {
     const runTimestamp = Math.floor(Date.now() / 1000);
     this.client.logger.info('Running daily missing archive check...');
-    
-    try {
-        const timezone = this.settings?.timezone ?? config.TIMEZONE ?? 'UTC';
-        const channelId = this.settings?.notification_channel_id ?? config.DEFAULT_CHANNEL_ID;
 
-        if (!channelId) {
-            this.client.logger.warn('Cannot run reminder: No notification channel is configured.');
-            return;
-        }
+    const timezone = this.settings?.timezone ?? config.TIMEZONE ?? 'UTC';
+    const channelId = this.settings?.notification_channel_id ?? config.DEFAULT_CHANNEL_ID;
 
-        const maxDay = this.postRepo.getMaxDay();
-        if (!maxDay) {
-            this.client.logger.info('No posts in archive. Skipping reminder.');
-            return;
-        }
-
-        const latestPost = this.postRepo.findByDay(maxDay);
-        if (!latestPost) {
-            this.client.logger.error({ day: maxDay }, 'Could not find post for maxDay. Data inconsistency?');
-            return;
-        }
-        
-        const nowInTimezone = toZonedTime(new Date(), timezone);
-        const lastPostDateInTimezone = toZonedTime(new Date(latestPost.post.timestamp * 1000), timezone);
-        
-        const isPostFromPreviousDay = format(nowInTimezone, 'yyyy-MM-dd') > format(lastPostDateInTimezone, 'yyyy-MM-dd');
-
-        if (isPostFromPreviousDay) {
-            const expectedDay = maxDay + 1;
-
-            // Check if we've already sent a reminder for this *specific missing day*.
-            if (this.settings?.last_reminder_sent_day === expectedDay) {
-                this.client.logger.info(`Reminder for missing Day ${expectedDay} was already sent. Skipping.`);
-                return;
-            }
-
-            const channel = await this.client.channels.fetch(channelId);
-            if (!channel || channel.type !== ChannelType.GuildText) {
-                this.client.logger.warn(`Reminder failed: Channel ${channelId} not found or is not a text channel.`);
-                return;
-            }
-
-            // Store previous state in case of failure, enabling a retry.
-            const previousSentDay = this.settings?.last_reminder_sent_day;
-
-            // Mark that we are *about to* send a reminder for the missing day.
-            this.settingsRepo.updateSettings({ last_reminder_sent_day: expectedDay });
-            this.settings = this.settingsRepo.getSettings(); // Refresh local settings cache
-
-            try {
-                const message = this.client.dialogueService.get('notification.reminder.missingDay', {
-                    maxDay, expectedDay
-                });
-                await channel.send(message);
-                this.client.logger.info(`Sent reminder for missing Day ${expectedDay}.`);
-            } catch (sendError) {
-                this.client.logger.error({ err: sendError, channelId: channel.id }, 'Failed to send reminder message. Rolling back to allow a retry on the next run.');
-                // Roll back the setting to allow a retry on the next scheduled check.
-                this.settingsRepo.updateSettings({ last_reminder_sent_day: previousSentDay });
-                this.settings = this.settingsRepo.getSettings(); // Re-refresh local cache
-            }
-
-        } else {
-            this.client.logger.info('Reminder not needed; archive is up-to-date.');
-        }
-    } catch (error) {
-        this.client.logger.error({ err: error }, 'An unexpected error occurred during daily reminder check.');
-    } finally {
-        // CRITICAL: Always update the check timestamp, even on failure, to prevent
-        // infinite loops on a failing check during catch-up.
-        this.settingsRepo.updateSettings({ last_reminder_check_timestamp: runTimestamp });
-        this.settings = this.settingsRepo.getSettings(); // Refresh cache
-        this.client.logger.info('Finished daily missing archive check.');
+    if (!channelId) {
+        this.client.logger.warn('Cannot run reminder: No notification channel is configured.');
+        return;
     }
+
+    const maxDay = this.postRepo.getMaxDay();
+    if (!maxDay) {
+        this.client.logger.info('No posts in archive. Skipping reminder.');
+        return;
+    }
+
+    const latestPost = this.postRepo.findByDay(maxDay);
+    if (!latestPost) {
+        this.client.logger.error({ day: maxDay }, 'Could not find post for maxDay. Data inconsistency?');
+        return;
+    }
+    
+    const nowInTimezone = toZonedTime(new Date(), timezone);
+    const lastPostDateInTimezone = toZonedTime(new Date(latestPost.post.timestamp * 1000), timezone);
+    
+    const isPostFromPreviousDay = format(nowInTimezone, 'yyyy-MM-dd') > format(lastPostDateInTimezone, 'yyyy-MM-dd');
+
+    if (isPostFromPreviousDay) {
+        const expectedDay = maxDay + 1;
+
+        // Check if we've already sent a reminder for this *specific missing day*.
+        if (this.settings?.last_reminder_sent_day === expectedDay) {
+            this.client.logger.info(`Reminder for missing Day ${expectedDay} was already sent. Skipping.`);
+            return;
+        }
+
+        const channel = await this.client.channels.fetch(channelId);
+        if (!channel || channel.type !== ChannelType.GuildText) {
+            this.client.logger.warn(`Reminder failed: Channel ${channelId} not found or is not a text channel.`);
+            return;
+        }
+
+        // Store previous state in case of failure, enabling a retry.
+        const previousSentDay = this.settings?.last_reminder_sent_day;
+
+        // Mark that we are *about to* send a reminder for the missing day.
+        this.settingsRepo.updateSettings({ last_reminder_sent_day: expectedDay });
+        this.settings = this.settingsRepo.getSettings(); // Refresh local settings cache
+
+        try {
+            const message = this.client.dialogueService.get('notification.reminder.missingDay', {
+                maxDay, expectedDay
+            });
+            await channel.send(message);
+            this.client.logger.info(`Sent reminder for missing Day ${expectedDay}.`);
+        } catch (sendError) {
+            this.client.logger.error({ err: sendError, channelId: channel.id }, 'Failed to send reminder message. Rolling back to allow a retry on the next run.');
+            // Roll back the setting to allow a retry on the next scheduled check.
+            this.settingsRepo.updateSettings({ last_reminder_sent_day: previousSentDay });
+            this.settings = this.settingsRepo.getSettings(); // Re-refresh local cache
+            // Re-throw the error to be caught by the global handler
+            throw sendError;
+        }
+
+    } else {
+        this.client.logger.info('Reminder not needed; archive is up-to-date.');
+    }
+
+    // CRITICAL: Always update the check timestamp.
+    this.settingsRepo.updateSettings({ last_reminder_check_timestamp: runTimestamp });
+    this.settings = this.settingsRepo.getSettings(); // Refresh cache
+    this.client.logger.info('Finished daily missing archive check.');
   }
 }

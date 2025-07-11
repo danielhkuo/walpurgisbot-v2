@@ -7,7 +7,7 @@ import { SlashCommandBuilder, PermissionFlagsBits } from 'discord.js';
 import type { ChatInputCommandInteraction, Client } from 'discord.js';
 import { ZodError } from 'zod';
 import type { Command } from '../../types/command';
-import { ImportFileSchema, type ImportPost } from '../../types/import';
+import { ImportFileSchema } from '../../types/import';
 
 // Discord's file size limit is 25MB. We'll use 24MB as a safe buffer.
 const MAX_FILE_SIZE_BYTES = 24 * 1024 * 1024;
@@ -64,7 +64,7 @@ export const command: Command = {
         // 3. Validate Data Structure and Execute Import
         try {
             // --- Restored Zod Validation ---
-            const validatedData = ImportFileSchema.parse(jsonData) as ImportPost[];
+            const validatedData = ImportFileSchema.parse(jsonData);
 
             // --- Restored Transactional Import ---
             const result = client.posts.importFromJson(validatedData);

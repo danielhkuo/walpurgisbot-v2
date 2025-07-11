@@ -1,5 +1,5 @@
 // src/database/settingsRepository.ts
-import type { Database, Statement } from 'better-sqlite3';
+import type { Database, Statement } from 'bun:sqlite';
 import {
     NotificationSettingsSchema,
     type NotificationSettings,
@@ -15,7 +15,7 @@ export class SettingsRepository {
 
     constructor(db: Database) {
         this.db = db;
-        this.getSettingsStmt = this.db.prepare('SELECT * FROM notification_settings WHERE id = 1');
+        this.getSettingsStmt = this.db.prepare('SELECT * FROM notification_settings WHERE id = 1') as Statement;
         this.updateSettingsStmt = this.db.prepare(`
             INSERT INTO notification_settings (
                 id, notification_channel_id, timezone, reminder_enabled, reminder_time,
@@ -38,12 +38,11 @@ export class SettingsRepository {
                 last_reminder_sent_day = excluded.last_reminder_sent_day,
                 last_reminder_check_timestamp = excluded.last_reminder_check_timestamp,
                 active_persona_name = excluded.active_persona_name
-            RETURNING *
-        `);
+        `) as Statement;
     }
 
     public getSettings(): NotificationSettings | null {
-        const row = this.getSettingsStmt.get();
+        const row = this.getSettingsStmt.get() as NotificationSettings | null;
         if (!row) {
             return null;
         }
@@ -70,31 +69,28 @@ export class SettingsRepository {
         // Merge the existing settings (or defaults) with the new partial data.
         const merged = { ...(current || defaults), ...partialSettings };
 
-        // Map booleans to SQLite integers as needed.
-        const dbData = {
+        const result = this.updateSettingsStmt.get({
             ...merged,
-            reminder_enabled: merged.reminder_enabled ? 1 : 0,
-            report_enabled: merged.report_enabled ? 1 : 0,
-        };
-
-        const result = this.updateSettingsStmt.get(dbData);
+            // Bun.Sqlite handles boolean-to-integer conversion automatically.
+        }) as NotificationSettings;
         return NotificationSettingsSchema.parse(result);
     }
 
     // --- Persona and Dialogue Methods ---
 
     public getAllPersonas(): Persona[] {
-        return this.db.prepare('SELECT name, description FROM personas').all() as Persona[];
+        const stmt = this.db.prepare('SELECT name, description FROM personas');
+        return stmt.all() as Persona[];
     }
 
     public getPersona(name: string): Persona | null {
-        const row = this.db.prepare('SELECT name, description FROM personas WHERE name = ?').get(name);
-        return (row as Persona) ?? null;
+        const stmt = this.db.prepare('SELECT name, description FROM personas WHERE name = ?');
+        const row = stmt.get(name) as Persona | undefined;
+        return row ?? null;
     }
 
     public getDialoguesForPersona(personaName: string): Dialogue[] {
-        return this.db
-            .prepare('SELECT key, text FROM dialogue WHERE persona_name = ?')
-            .all(personaName) as Dialogue[];
+        const stmt = this.db.prepare('SELECT key, text FROM dialogue WHERE persona_name = ?');
+        return stmt.all(personaName) as Dialogue[];
     }
 }

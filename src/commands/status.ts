@@ -25,23 +25,12 @@ export const command: Command = {
         const maxDay = client.posts.getMaxDay();
         const end = interaction.options.getInteger('end') ?? maxDay ?? 1;
 
-        if (end < start) {
-            await interaction.editReply(client.dialogueService.get('status.fail.startAfterEnd'));
-            return;
-        }
-
         if (start > end) {
             await interaction.editReply(client.dialogueService.get('status.fail.startAfterEnd'));
             return;
         }
 
-        // Get all archived days in the range
-        const archivedDays: Set<number> = new Set();
-        for (let day = start; day <= end; day++) {
-            if (client.posts.findByDay(day)) {
-                archivedDays.add(day);
-            }
-        }
+        const archivedDays = new Set(client.posts.getArchivedDaysInRange(start, end));
 
         const DAYS_PER_PAGE = 25;
         const totalPages = Math.ceil((end - start + 1) / DAYS_PER_PAGE);
@@ -49,11 +38,10 @@ export const command: Command = {
         const generateEmbed = (page: number) => {
             const pageStartDay = start + page * DAYS_PER_PAGE;
             const pageEndDay = Math.min(start + (page + 1) * DAYS_PER_PAGE - 1, end);
-            const archivedInPage = new Set([...archivedDays].filter(day => day >= pageStartDay && day <= pageEndDay));
 
             const statuses: string[] = [];
             for (let day = pageStartDay; day <= pageEndDay; day++) {
-                const status = archivedInPage.has(day) ? '✅' : '❌';
+                const status = archivedDays.has(day) ? '✅' : '❌';
                 statuses.push(client.dialogueService.get('status.embed.dayStatus', { day, status }));
             }
 

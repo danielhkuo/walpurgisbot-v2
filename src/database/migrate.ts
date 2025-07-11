@@ -1,5 +1,5 @@
 // src/database/migrate.ts
-import type { Database } from 'better-sqlite3';
+import type { Database } from 'bun:sqlite';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
