@@ -3,7 +3,7 @@ import { Events, type Interaction, type Client, GuildMemberRoleManager } from 'd
 import type { Event } from '../types/event';
 import { config } from '../config';
 
-// Helper function to check for admin role
+// Helper function to check for admin role for component interactions
 function isBotAdmin(interaction: Interaction): boolean {
     if (!interaction.member || !interaction.member.roles) return false;
     const roles = interaction.member.roles as GuildMemberRoleManager;
@@ -15,9 +15,11 @@ export const event: Event<Events.InteractionCreate> = {
     async execute(client: Client, interaction: Interaction) {
         // --- Component Interaction Handling (Buttons, Modals, etc.) ---
         if (interaction.isButton() || interaction.isModalSubmit()) {
+            // Check for prefixes used by the ArchiveSessionManager
             const prefix = interaction.customId.split('_')[0];
-            const archiveActions = ['force', 'confirm', 'ignore', 'add', 'submit', 'delete'];
+            const archiveActions = ['force', 'confirm', 'ignore', 'add', 'submit'];
             if (prefix && archiveActions.includes(prefix)) {
+                // All session-managed interactions require admin privileges.
                 if (!isBotAdmin(interaction)) {
                     await interaction.reply({
                         content: 'You do not have permission to perform this action.',
@@ -27,19 +29,14 @@ export const event: Event<Events.InteractionCreate> = {
                 }
 
                 if (interaction.isButton()) {
-                    // Specific logic for delete buttons which are handled by the command itself
-                    if (!interaction.customId.startsWith('delete')) {
-                        await client.archiveSessionManager.handleInteraction(interaction);
-                    }
-                }
-                if (interaction.isModalSubmit()) {
+                    await client.archiveSessionManager.handleInteraction(interaction);
+                } else if (interaction.isModalSubmit()) {
                     await client.archiveSessionManager.handleModalSubmit(interaction);
                 }
-                // We return here for session-managed interactions, but let command-based collectors proceed.
-                if (!interaction.customId.startsWith('delete')) {
-                    return;
-                }
+                return; // These interactions are fully handled by the session manager.
             }
+            // Note: Command-specific button collectors (like for /delete) will fall through
+            // and be handled by the collector in their respective command files.
         }
 
         // --- Application Command Handling ---
@@ -47,7 +44,6 @@ export const event: Event<Events.InteractionCreate> = {
             const command = client.commands.get(interaction.commandName);
             if (!command) {
                 client.logger.warn({ commandName: interaction.commandName }, 'No command found.');
-                // Context menus can't be "mistyped", so no reply is necessary.
                 if (interaction.isChatInputCommand()) {
                     await interaction.reply({
                         content: `No command matching \`/${interaction.commandName}\` was found.`,
@@ -58,19 +54,8 @@ export const event: Event<Events.InteractionCreate> = {
             }
 
             try {
-                // Declarative permissions (`setDefaultMemberPermissions`) are the primary check.
-                // This is a fallback/belt-and-suspenders for commands without it.
-                if (['settings', 'manual-archive'].includes(command.data.name)) {
-                    if (!isBotAdmin(interaction)) {
-                        await interaction.reply({
-                            content: 'You do not have permission to use this command.',
-                            ephemeral: true,
-                        });
-                        return;
-                    }
-                }
-
-                // Type-safe command execution
+                // Command permissions are handled declaratively via `setDefaultMemberPermissions`.
+                // No imperative checks are needed here.
                 if (interaction.isChatInputCommand() && 'description' in command.data) {
                     await (command as import('../types/command').Command).execute(interaction, client);
                 } else if (interaction.isMessageContextMenuCommand() && !('description' in command.data)) {
@@ -83,7 +68,6 @@ export const event: Event<Events.InteractionCreate> = {
                         { commandName: interaction.commandName, interactionType: interaction.type },
                         'Command and interaction type mismatch.',
                     );
-                    // Optionally reply to the user
                 }
             } catch (error) {
                 client.logger.error({ err: error, commandName: interaction.commandName }, 'Error executing command.');
@@ -105,7 +89,6 @@ export const event: Event<Events.InteractionCreate> = {
                 client.logger.warn({ commandName: interaction.commandName }, 'No autocomplete handler for command.');
                 return;
             }
-            // Ensure the command is a slash command with an autocomplete handler
             if ('autocomplete' in command && command.autocomplete) {
                 try {
                     await command.autocomplete(interaction);

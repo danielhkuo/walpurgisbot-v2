@@ -1,7 +1,6 @@
-/**
- * @fileoverview Defines Zod schemas for validating V1 and V2 import files.
- * This ensures type safety and data integrity before database operations.
- */
+// src/types/import.ts
+// Defines Zod schemas for validating V1 and V2 import files.
+// This ensures type safety and data integrity before database operations.
 
 import { z } from 'zod';
 

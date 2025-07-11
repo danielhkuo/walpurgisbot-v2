@@ -1,7 +1,6 @@
-/**
- * @fileoverview Repository for handling all database operations related to posts
- * and their media attachments.
- */
+// src/database/postRepository.ts
+// Repository for handling all database operations related to posts
+// and their media attachments.
 
 import type { Database, Statement } from 'better-sqlite3';
 import {

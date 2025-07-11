@@ -1,13 +1,6 @@
 // src/commands/delete.ts
-import {
-    SlashCommandBuilder,
-    ButtonBuilder,
-    ButtonStyle,
-    ActionRowBuilder,
-    ComponentType,
-    PermissionFlagsBits,
-} from 'discord.js';
-import type { ChatInputCommandInteraction, Client, ButtonInteraction } from 'discord.js';
+import { SlashCommandBuilder, PermissionFlagsBits } from 'discord.js';
+import type { ChatInputCommandInteraction, Client } from 'discord.js';
 import type { Command } from '../types/command';
 import type { Post } from '../types/database';
 import { presentDeleteConfirmation } from '../lib/interaction-helpers/deleteConfirmation';
@@ -16,69 +9,25 @@ const MESSAGE_LINK_REGEX = /channels\/\d+\/\d+\/(\d+)/;
 
 /**
  * Handles the logic for deleting an archive by its day number.
+ * This finds the associated message and uses the shared confirmation flow.
  */
 async function handleDeleteByDay(interaction: ChatInputCommandInteraction, client: Client) {
     const day = interaction.options.getInteger('day', true);
 
-    const existingPost = client.posts.findByDay(day);
-    if (!existingPost) {
+    const result = client.posts.findByDay(day);
+    if (!result) {
         await interaction.reply({ content: `Error: No archive found for Day ${day}.`, ephemeral: true });
         return;
     }
 
-    const confirmButton = new ButtonBuilder()
-        .setCustomId(`confirm_delete_day_${day}`)
-        .setLabel('Yes, Delete')
-        .setStyle(ButtonStyle.Danger);
+    // Find all posts associated with this message to provide a full warning.
+    const associatedPosts = client.posts.findPostsByMessageId(result.post.message_id);
+    const affectedDays = associatedPosts.map(p => p.day);
 
-    const cancelButton = new ButtonBuilder()
-        .setCustomId(`cancel_delete_day_${day}`)
-        .setLabel('No, Cancel')
-        .setStyle(ButtonStyle.Secondary);
-
-    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(confirmButton, cancelButton);
-
-    const reply = await interaction.reply({
-        content: `Are you sure you want to delete the archive for Day ${day}?`,
-        components: [row],
-        ephemeral: true,
-    });
-
-    const collector = reply.createMessageComponentCollector({
-        componentType: ComponentType.Button,
-        filter: i => i.user.id === interaction.user.id,
-        time: 30_000, // 30 seconds
-    });
-
-    collector.on('collect', async (i: ButtonInteraction) => {
-        const collectedDay = parseInt(i.customId.split('_')[3] ?? '0', 10);
-
-        if (i.customId.startsWith('confirm_delete_day')) {
-            const success = client.posts.deleteByDay(collectedDay);
-            if (success) {
-                await i.update({
-                    content: `✅ Deletion confirmed. The archive for Day ${collectedDay} has been removed.`,
-                    components: [],
-                });
-            } else {
-                await i.update({
-                    content: `❌ Error: Failed to delete the archive for Day ${collectedDay}. Check the logs.`,
-                    components: [],
-                });
-            }
-        } else if (i.customId.startsWith('cancel_delete_day')) {
-            await i.update({ content: 'Deletion cancelled.', components: [] });
-        }
-    });
-
-    collector.on('end', async collected => {
-        if (collected.size === 0) {
-            await interaction.editReply({
-                content: 'Confirmation timed out. Deletion cancelled.',
-                components: [],
-            });
-        }
-    });
+    // Delegate to the shared helper to standardize deletion logic and UI.
+    // This ensures that deleting "by day" behaves like deleting "by message",
+    // preventing data inconsistencies if multiple days share one message.
+    await presentDeleteConfirmation(interaction, client, result.post.message_id, affectedDays);
 }
 
 /**

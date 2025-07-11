@@ -13,10 +13,10 @@ import {
     ButtonInteraction,
     ModalSubmitInteraction,
   } from 'discord.js';
-  import {parseMessageContent} from '../lib/archiveParser';
-  import type {PostRepository} from '../database/postRepository';
-  import type {CreatePostInput} from '../types/database';
-  import {config} from '../config';
+  import { parseMessageContent } from '../lib/archiveParser';
+  import type { PostRepository } from '../database/postRepository';
+  import type { CreatePostInput } from '../types/database';
+  import { config } from '../config';
   
   /** The state of a pending archive session for a user. */
   interface ArchiveSession {
@@ -96,7 +96,7 @@ import {
           );
   
           // 1. Parse the current message with media.
-          let {detectedDays, confidence} = parseMessageContent(message.content);
+          let { detectedDays, confidence } = parseMessageContent(message.content);
   
           // 2. If no days were found, look backward for context (text-first case).
           if (detectedDays.length === 0) {
@@ -115,7 +115,7 @@ import {
                   const historicalResult = parseMessageContent(recentMsg.content);
                   if (historicalResult.detectedDays.length > 0) {
                     this.client.logger.info(
-                      {foundIn: recentMsg.id},
+                      { foundIn: recentMsg.id },
                       'Found day info in a previous message.',
                     );
                     detectedDays = historicalResult.detectedDays;
@@ -126,7 +126,7 @@ import {
               }
             } catch (err) {
               this.client.logger.error(
-                {err},
+                { err },
                 'Failed to fetch recent messages for context.',
               );
             }
@@ -165,14 +165,14 @@ import {
      * @param session The user's active archive session.
      */
     private async evaluateSession(session: ArchiveSession): Promise<void> {
-      const {detectedDays, confidence, initialMessage} = session;
+      const { detectedDays, confidence, initialMessage } = session;
   
       // Case: Complete Session (Happy Path or Benign Duplicate).
       if (detectedDays.length === 1 && confidence === 'high') {
-        const day = detectedDays[0];
+        const day = detectedDays[0] as number;
   
         // Duplicate Check.
-        if (day && this.posts.findByDay(day)) {
+        if (this.posts.findByDay(day)) {
           this.client.logger.warn(`Benign Duplicate: Day ${day} already exists.`);
           await initialMessage.react('⚠️');
           this.cleanupSession(session.userId);
@@ -237,12 +237,12 @@ import {
       const result = this.posts.createWithMedia(postData);
       if (result) {
         this.client.logger.info(
-          {day, messageId: session.initialMessage.id},
+          { day, messageId: session.initialMessage.id },
           'Successfully archived post.',
         );
       } else {
         this.client.logger.error(
-          {day, messageId: session.initialMessage.id},
+          { day, messageId: session.initialMessage.id },
           'Failed to archive post.',
         );
         await session.initialMessage.react('❌');
@@ -255,7 +255,7 @@ import {
       session: ArchiveSession,
       expectedDay: number,
     ) {
-      const day = session.detectedDays[0];
+      const day = session.detectedDays[0] as number;
       const buttons = new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder()
           .setCustomId(`force_archive_${session.initialMessage.id}_${day}`)
@@ -277,7 +277,7 @@ import {
     }
   
     private async promptForLowConfidence(session: ArchiveSession) {
-      const day = session.detectedDays[0];
+      const day = session.detectedDays[0] as number;
       const buttons = new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder()
           .setCustomId(`confirm_archive_${session.initialMessage.id}_${day}`)
@@ -489,7 +489,7 @@ import {
         };
       } catch (error) {
         this.client.logger.error(
-          {err: error, messageId},
+          { err: error, messageId },
           'Failed to fetch message for session recreation',
         );
         return null;
@@ -500,8 +500,30 @@ import {
       content: string,
       components: ActionRowBuilder<ButtonBuilder>[] = [],
     ): Promise<void> {
-      // This logic sends a notification to the first available channel an admin can see.
-      // A dedicated, configured admin channel would be more robust.
+      const settings = this.client.settings.getSettings();
+      const preferredChannelId = settings?.notification_channel_id;
+  
+      // 1. Prioritize the configured notification channel.
+      if (preferredChannelId) {
+        try {
+          const channel = await this.client.channels.fetch(preferredChannelId);
+          if (channel && channel.type === ChannelType.GuildText) {
+            await channel.send({
+              content: `<@&${config.ADMIN_ROLE_ID}> ${content}`,
+              components,
+            });
+            this.client.logger.info(`Sent admin notification to preferred channel ${channel.id}`);
+            return; // Success, we're done.
+          }
+        } catch (error) {
+          this.client.logger.warn(
+            { err: error, channelId: preferredChannelId },
+            'Failed to send admin notification to preferred channel. Falling back to role search.',
+          );
+        }
+      }
+  
+      // 2. Fallback: Find the first available channel an admin can see.
       for (const guild of this.client.guilds.cache.values()) {
         try {
           const adminRole = await guild.roles.fetch(config.ADMIN_ROLE_ID);
@@ -519,14 +541,14 @@ import {
               components,
             });
             this.client.logger.info(
-              `Sent admin notification to channel ${channel.id}`,
+              `Sent admin notification to fallback channel ${channel.id}`,
             );
             return; // Sent successfully.
           }
         } catch (error) {
           this.client.logger.error(
-            {err: error, guildId: guild.id},
-            'Failed to send admin notification.',
+            { err: error, guildId: guild.id },
+            'Failed to send admin notification via fallback.',
           );
         }
       }

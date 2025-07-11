@@ -1,8 +1,7 @@
-/**
- * @fileoverview Implements the /import command for administrators.
- * This command allows for the bulk import of archive data from a JSON file,
- * supporting both V1 and V2 export formats.
- */
+// src/commands/admin/import.ts
+// Implements the /import command for administrators.
+// This command allows for the bulk import of archive data from a JSON file,
+// supporting both V1 and V2 export formats.
 
 import {
     SlashCommandBuilder,

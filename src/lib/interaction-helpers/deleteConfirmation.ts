@@ -27,12 +27,12 @@ export async function presentDeleteConfirmation(
     affectedDays: number[],
 ) {
     const confirmButton = new ButtonBuilder()
-        .setCustomId(`confirm_delete_link_${messageId}`)
+        .setCustomId(`delete_confirm_link_${messageId}`)
         .setLabel('Yes, Delete')
         .setStyle(ButtonStyle.Danger);
 
     const cancelButton = new ButtonBuilder()
-        .setCustomId(`cancel_delete_link_${messageId}`)
+        .setCustomId(`delete_cancel_link_${messageId}`)
         .setLabel('No, Cancel')
         .setStyle(ButtonStyle.Secondary);
 
@@ -53,10 +53,10 @@ export async function presentDeleteConfirmation(
     });
 
     collector.on('collect', async (i: ButtonInteraction) => {
-        // Custom ID format: confirm_delete_link_{message_id}
+        // Custom ID format: delete_confirm_link_{message_id}
         const collectedMessageId = i.customId.split('_')[3];
 
-        if (i.customId.startsWith('confirm_delete_link')) {
+        if (i.customId.startsWith('delete_confirm_link')) {
             const success = client.posts.deleteByMessageId(collectedMessageId ?? '');
             if (success) {
                 await i.update({
@@ -71,7 +71,7 @@ export async function presentDeleteConfirmation(
                     components: [],
                 });
             }
-        } else if (i.customId.startsWith('cancel_delete_link')) {
+        } else if (i.customId.startsWith('delete_cancel_link')) {
             await i.update({ content: 'Deletion cancelled.', components: [] });
         }
     });
