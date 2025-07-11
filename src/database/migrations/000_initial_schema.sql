@@ -1,4 +1,4 @@
--- src/database/schema.sql
+-- src/database/migrations/000_initial_schema.sql
 
 -- Stores the core metadata for each daily post.
 CREATE TABLE IF NOT EXISTS posts (
