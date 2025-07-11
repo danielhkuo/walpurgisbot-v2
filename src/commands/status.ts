@@ -27,7 +27,8 @@ export const command: Command = {
         let end = interaction.options.getInteger('end');
 
         if (!end) {
-            end = client.posts.getMaxDay() ?? start;
+            // default to a single-page window when the user omits --end
+            end = start + PAGE_SIZE - 1;
         }
 
         if (start > end) {
@@ -36,7 +37,7 @@ export const command: Command = {
         }
 
         const totalDays = end - start + 1;
-        const totalPages = Math.ceil(totalDays / PAGE_SIZE);
+        const totalPages = Math.max(1, Math.ceil(totalDays / PAGE_SIZE));
         let currentPage = 0;
 
         const generateEmbed = (page: number) => {

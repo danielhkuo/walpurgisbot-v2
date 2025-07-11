@@ -2,6 +2,7 @@
 import { SlashCommandBuilder, PermissionFlagsBits, AttachmentBuilder } from 'discord.js';
 import type { ChatInputCommandInteraction, Client } from 'discord.js';
 import { promises as fsPromises, createWriteStream } from 'node:fs';
+import { finished } from 'node:stream/promises';
 import os from 'node:os';
 import path from 'node:path';
 import type { Command } from '../../types/command';
@@ -41,12 +42,8 @@ export const command: Command = {
             }
             writeStream.write(']\n');
 
-            // Wait for the stream to finish writing to the file
-            await new Promise((resolve, reject) => {
-                writeStream.on('finish', () => resolve(undefined));
-                writeStream.on('error', reject);
-                writeStream.end();
-            });
+            writeStream.end();
+            await finished(writeStream);
 
             // If isFirst is still true, the loop never ran.
             if (isFirst) {

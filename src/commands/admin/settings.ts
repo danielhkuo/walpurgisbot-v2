@@ -100,49 +100,32 @@ async function handleSetReminder(interaction: ChatInputCommandInteraction, clien
 
     if (status === 'enable') {
         if (!time) {
-            await interaction.reply({
-                content: '❌ The `time` option is required when enabling reminders.',
-                ephemeral: true,
-            });
+            await interaction.reply({ content: '❌ `time` is required when enabling.', ephemeral: true });
             return;
         }
         if (!timeRegex.test(time)) {
-            await interaction.reply({
-                content: '❌ Invalid time format. Please use 24-hour `HH:MM` format (e.g., `22:00`).',
-                ephemeral: true,
-            });
+            await interaction.reply({ content: '❌ Time must be HH:MM (24-h).', ephemeral: true });
             return;
         }
+    }
 
-        try {
-            client.settings.updateSettings({ reminder_enabled: true, reminder_time: time });
-            client.notificationService.rescheduleJobs();
-            await interaction.reply({
-                content: `✅ Success! Daily reminders are now **enabled** and will be sent around \`${time}\` if an archive is missing.`,
-                ephemeral: true,
-            });
-        } catch (error) {
-            client.logger.error({ err: error, guildId: interaction.guildId }, 'Failed to enable reminder.');
-            await interaction.reply({
-                content: 'An error occurred while saving the reminder settings. Please try again.',
-                ephemeral: true,
-            });
-        }
-    } else { // status === 'disable'
-        try {
-            client.settings.updateSettings({ reminder_enabled: false, reminder_time: null });
-            client.notificationService.rescheduleJobs();
-            await interaction.reply({
-                content: '✅ Success! Daily reminders are now **disabled**.',
-                ephemeral: true,
-            });
-        } catch (error) {
-            client.logger.error({ err: error, guildId: interaction.guildId }, 'Failed to disable reminder.');
-            await interaction.reply({
-                content: 'An error occurred while saving the reminder settings. Please try again.',
-                ephemeral: true,
-            });
-        }
+    const patch =
+        status === 'enable'
+            ? { reminder_enabled: true, reminder_time: time! }
+            : { reminder_enabled: false, reminder_time: null };
+
+    const successMsg =
+        status === 'enable'
+            ? `✅ Daily reminders **enabled** at \`${time}\`.`
+            : '✅ Daily reminders **disabled**.';
+
+    try {
+        client.settings.updateSettings(patch);
+        client.notificationService.rescheduleJobs();
+        await interaction.reply({ content: successMsg, ephemeral: true });
+    } catch (err) {
+        client.logger.error({ err }, 'Failed to update reminder settings');
+        await interaction.reply({ content: 'An error occurred. Try again.', ephemeral: true });
     }
 }
 
