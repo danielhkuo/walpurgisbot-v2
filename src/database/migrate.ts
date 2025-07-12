@@ -21,6 +21,10 @@ export async function runMigrations(db: Database, logger: Logger): Promise<void>
     // 2. Get all migrations that have already been run
     const ranMigrations = db.query('SELECT name FROM migrations').all() as { name: string }[];
     const ranMigrationNames = new Set(ranMigrations.map(m => m.name));
+    
+    // Use the environment variable in production (Docker) and a relative path for local development.
+    const migrationsDir = process.env.MIGRATIONS_PATH || path.join(import.meta.dir, 'migrations');
+    logger.info(`Looking for migration files in: ${migrationsDir}`);
 
     // 3. Run any migrations that have not been run yet
     const insertMigrationStmt = db.prepare('INSERT INTO migrations (name) VALUES (?)');
@@ -29,9 +33,8 @@ export async function runMigrations(db: Database, logger: Logger): Promise<void>
         if (!ranMigrationNames.has(migrationFile)) {
             logger.info(`Running migration: ${migrationFile}`);
             try {
-                // Bun.file() combined with --compile embeds the asset into the binary.
-                // import.meta.dir gives us the correct path relative to the source file.
-                const migrationPath = path.join(import.meta.dir, 'migrations', migrationFile);
+                // FIX: Construct the path from the runtime directory.
+                const migrationPath = path.join(migrationsDir, migrationFile);
                 const sql = await Bun.file(migrationPath).text();
                 
                 db.exec(sql);

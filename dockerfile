@@ -34,13 +34,16 @@ WORKDIR /app
 
 # This is still important for runtime configuration (e.g., TOKEN)
 ENV NODE_ENV=production \
-    DATABASE_PATH=/app/data/walpurgis.db
+    DATABASE_PATH=/app/data/walpurgis.db \
+    # FIX: Add this environment variable
+    MIGRATIONS_PATH=/app/migrations
 
 RUN addgroup -S appuser && adduser -S appuser -G appuser
 
 VOLUME ["/app/data"]
 
 # Copy the migrations directory alongside the binary
+# This path now matches the MIGRATIONS_PATH environment variable
 COPY --from=builder /app/src/database/migrations ./migrations
 COPY --from=builder /app/walpurgisbot-v2 .
 
