@@ -7,10 +7,11 @@ services:
     environment:
       - NODE_ENV=production
       - MIGRATIONS_PATH=/app/src/database/migrations
+      - MIGRATIONS_PATH=/migrations
       - DATABASE_PATH=/app/data/walpurgis.db
 
     env_file:
-      - .env            # still brings in your token, client ID, etc.
+      - .env
 
     volumes:
       - walpurgisbot_data:/app/data

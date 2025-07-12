@@ -1,0 +1,25 @@
+# docker-compose.bazzite.yml
+# This file is optimized for running on an immutable OS like Bazzite using Podman.
+services:
+  bot:
+    image: ghcr.io/danielhkuo/walpurgisbot-v2:latest
+    container_name: walpurgisbot-v2
+    restart: unless-stopped
+
+    # Bazzite/Fedora Atomic usually run on x86_64 hardware.
+    # This line is not needed unless you are on an ARM device (e.g., Framework 13 ARM).
+    # platform: linux/arm64
+
+    environment:
+      # This tells the application where to find the migrations baked into the image.
+      - MIGRATIONS_PATH=/migrations
+      # This tells the application where to create/find its database inside the container.
+      - DATABASE_PATH=/app/data/walpurgis.db
+
+    env_file: .env
+
+    volumes:
+      # Mounts a directory from your user's home folder to persist the database.
+      # The ':z' at the end is crucial for Podman on SELinux systems (like Bazzite)
+      # to set the correct security context on the volume, preventing permission errors.
+      - ~/.config/walpurgisbot-v2:/app/data:z

@@ -7,6 +7,9 @@ services:
     # If you ARE on an ARM server uncomment the next line
     # platform: linux/arm64
 
+    environment:
+      - MIGRATIONS_PATH=/migrations
+      - DATABASE_PATH=/app/data/walpurgis.db
     env_file: .env
     volumes:
-      - /mnt/user/appdata/walpurgisbot-v2:/app/data   # ← direct bind-mount
+      - /mnt/user/appdata/walpurgisbot-v2:/app/data

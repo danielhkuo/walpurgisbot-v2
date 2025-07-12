@@ -11,6 +11,8 @@ services:
     environment:
       # This ensures production logging is always used in the container.
       - NODE_ENV=production
+      # Explicitly use the new migrations path to match production behavior.
+      - MIGRATIONS_PATH=/migrations
     env_file:
       - .env
     volumes:
