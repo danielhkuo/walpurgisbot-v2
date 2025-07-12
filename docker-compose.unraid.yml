@@ -1,0 +1,12 @@
+services:
+  bot:
+    image: ghcr.io/danielhkuo/walpurgisbot-v2:latest
+    container_name: walpurgisbot-v2
+    restart: unless-stopped
+
+    # If you ARE on an ARM server uncomment the next line
+    # platform: linux/arm64
+
+    env_file: .env
+    volumes:
+      - /mnt/user/appdata/walpurgisbot-v2:/app/data   # ← direct bind-mount

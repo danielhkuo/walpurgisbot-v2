@@ -15,7 +15,4 @@ services:
       - .env
     volumes:
       # Use a relative path for the database. This works everywhere.
-      # On your server, make sure this path is where you want to store data.
-      # For Unraid, you would map this to your appdata share, e.g.:
-      # - /mnt/user/appdata/walpurgisbot-v2:/app/data
       - ./data:/app/data
