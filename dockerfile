@@ -41,7 +41,7 @@ RUN addgroup -S appuser && adduser -S appuser -G appuser
 VOLUME ["/app/data"]
 
 # Copy the migrations directory alongside the binary
-COPY --from=builder /app/migrations ./migrations
+COPY --from=builder /app/src/database/migrations ./migrations
 COPY --from=builder /app/walpurgisbot-v2 .
 
 # Ensure the new directory is also owned by the appuser
