@@ -12,7 +12,7 @@ ARG NODE_ENV=production
 ENV NODE_ENV=${NODE_ENV}
 
 # 1) Copy manifests.
-COPY package.json bun.lockb tsconfig.json ./
+COPY package.json bun.lock tsconfig.json ./
 
 # 2) Install dependencies.
 RUN --mount=type=cache,target=/root/.bun \
@@ -40,11 +40,11 @@ RUN addgroup -S appuser && adduser -S appuser -G appuser
 
 VOLUME ["/app/data"]
 
-# --- FIX: Copy the migrations directory alongside the binary ---
+# Copy the migrations directory alongside the binary
 COPY --from=builder /app/migrations ./migrations
 COPY --from=builder /app/walpurgisbot-v2 .
 
-# --- FIX: Ensure the new directory is also owned by the appuser ---
+# Ensure the new directory is also owned by the appuser
 RUN chown -R appuser:appuser /app && \
     chmod +x /app/walpurgisbot-v2
 
