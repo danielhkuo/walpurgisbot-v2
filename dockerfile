@@ -1,56 +1,36 @@
 # ────────────────────────────
-# Walpurgisbot v2 – Bun build
+# Walpurgisbot v2 – JIT build
 # ────────────────────────────
 
-##### ── Builder stage ── #####
-FROM --platform=${TARGETPLATFORM:-linux/amd64} oven/bun:1.2.17-alpine AS builder
+##### ── Dependencies stage ── #####
+# First, install dependencies in a separate layer to leverage Docker's cache.
+FROM --platform=${TARGETPLATFORM:-linux/amd64} oven/bun:1.2.17-alpine AS deps
 WORKDIR /app
 
-# Define a build argument with a default value of 'production'.
-ARG NODE_ENV=production
-# Set the environment variable from the build argument.
-ENV NODE_ENV=${NODE_ENV}
-
-# 1) Copy manifests.
-COPY package.json bun.lock tsconfig.json ./
-
-# 2) Install dependencies.
-RUN --mount=type=cache,target=/root/.bun \
-    bun install --frozen-lockfile --production
-
-# 3) Bring in the rest of the source and build the single binary
-COPY . .
-RUN bun build ./src/index.ts \
-    --compile \
-    --outfile /app/walpurgisbot-v2
+COPY bun.lock package.json ./
+RUN bun install --frozen-lockfile --production
 
 
 ##### ── Runtime stage ── #####
-FROM --platform=${TARGETPLATFORM:-linux/amd64} alpine:3.20
-
-RUN apk add --no-cache ca-certificates libstdc++
-
+# Start with a fresh Bun image for the final stage.
+FROM --platform=${TARGETPLATFORM:-linux/amd64} oven/bun:1.2.17-alpine
 WORKDIR /app
 
-# This is still important for runtime configuration (e.g., TOKEN)
+# Set all environment variables needed at RUNTIME.
 ENV NODE_ENV=production \
     DATABASE_PATH=/app/data/walpurgis.db \
-    # FIX: Add this environment variable
-    MIGRATIONS_PATH=/app/migrations
+    MIGRATIONS_PATH=/app/src/database/migrations
+
+# Copy the installed dependencies from the 'deps' stage.
+COPY --from=deps /app/node_modules ./node_modules
+# Copy the entire application source code.
+COPY . .
 
 RUN addgroup -S appuser && adduser -S appuser -G appuser
-
 VOLUME ["/app/data"]
-
-# Copy the migrations directory alongside the binary
-# This path now matches the MIGRATIONS_PATH environment variable
-COPY --from=builder /app/src/database/migrations ./migrations
-COPY --from=builder /app/walpurgisbot-v2 .
-
-# Ensure the new directory is also owned by the appuser
-RUN chown -R appuser:appuser /app && \
-    chmod +x /app/walpurgisbot-v2
+RUN chown -R appuser:appuser /app
 
 USER appuser
 
-CMD ["./walpurgisbot-v2"]
+# Run the application using Bun as the interpreter.
+CMD ["bun", "run", "src/index.ts"]
