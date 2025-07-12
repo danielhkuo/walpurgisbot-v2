@@ -6,14 +6,13 @@
 FROM --platform=${TARGETPLATFORM:-linux/amd64} oven/bun:1.2.17-alpine AS builder
 WORKDIR /app
 
-# --- FIX: Define NODE_ENV using an ARG for CI/CD ---
 # Define a build argument with a default value of 'production'.
 ARG NODE_ENV=production
 # Set the environment variable from the build argument.
 ENV NODE_ENV=${NODE_ENV}
 
 # 1) Copy manifests.
-COPY package.json bun.lock tsconfig.json ./
+COPY package.json bun.lockb tsconfig.json ./
 
 # 2) Install dependencies.
 RUN --mount=type=cache,target=/root/.bun \
@@ -37,11 +36,18 @@ WORKDIR /app
 ENV NODE_ENV=production \
     DATABASE_PATH=/app/data/walpurgis.db
 
-# ... (rest of the file is correct) ...
 RUN addgroup -S appuser && adduser -S appuser -G appuser
+
 VOLUME ["/app/data"]
+
+# --- FIX: Copy the migrations directory alongside the binary ---
+COPY --from=builder /app/migrations ./migrations
 COPY --from=builder /app/walpurgisbot-v2 .
+
+# --- FIX: Ensure the new directory is also owned by the appuser ---
 RUN chown -R appuser:appuser /app && \
     chmod +x /app/walpurgisbot-v2
+
 USER appuser
+
 CMD ["./walpurgisbot-v2"]
