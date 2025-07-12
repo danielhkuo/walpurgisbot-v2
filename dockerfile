@@ -2,35 +2,35 @@
 # Walpurgisbot v2 – JIT build
 # ────────────────────────────
 
-##### ── Dependencies stage ── #####
-# First, install dependencies in a separate layer to leverage Docker's cache.
+#################  Dependencies  #################
 FROM --platform=${TARGETPLATFORM:-linux/amd64} oven/bun:1.2.17-alpine AS deps
 WORKDIR /app
-
 COPY bun.lock package.json ./
 RUN bun install --frozen-lockfile --production
 
 
-##### ── Runtime stage ── #####
-# Start with a fresh Bun image for the final stage.
+#####################  Runtime  ###################
 FROM --platform=${TARGETPLATFORM:-linux/amd64} oven/bun:1.2.17-alpine
 WORKDIR /app
 
-# Set all environment variables needed at RUNTIME.
+##### Runtime envs (compile-time defaults) #####
 ENV NODE_ENV=production \
     DATABASE_PATH=/app/data/walpurgis.db \
-    MIGRATIONS_PATH=/app/src/database/migrations
+    MIGRATIONS_PATH=/migrations
 
-# Copy the installed dependencies from the 'deps' stage.
+##### Files ######################################
+# deps
 COPY --from=deps /app/node_modules ./node_modules
-# Copy the entire application source code.
+# app source
 COPY . .
+# bundle *only* the migration SQL files into /migrations
+COPY src/database/migrations /migrations
 
+##### User & data dir ############################
 RUN addgroup -S appuser && adduser -S appuser -G appuser
 VOLUME ["/app/data"]
-RUN chown -R appuser:appuser /app
-
+RUN chown -R appuser:appuser /app /migrations
 USER appuser
 
-# Run the application using Bun as the interpreter.
+##### Entrypoint #################################
 CMD ["bun", "run", "src/index.ts"]
