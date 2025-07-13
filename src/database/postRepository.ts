@@ -23,39 +23,58 @@ export class PostRepository {
   ) => { importedCount: number; skippedCount: number };
 
   // Statements
+   
   private deleteByDayStmt: Statement;
+   
   private deleteByMessageIdStmt: Statement;
+   
   private findByDayStmt: Statement;
+   
   private findMediaByDayStmt: Statement;
+   
   private findByMessageIdStmt: Statement;
+   
   private findAllWithMediaStmt: Statement;
+   
   private maxDayStmt: Statement;
+   
   private rangeStmt: Statement;
+   
   private postInsertStmt: Statement;
+   
   private mediaInsertStmt: Statement;
 
   constructor(db: Database) {
     this.db = db;
 
     // --- PREPARE STATEMENTS ---
+     
     this.deleteByDayStmt = this.db.prepare('DELETE FROM posts WHERE day = ?');
+     
     this.deleteByMessageIdStmt = this.db.prepare(
       'DELETE FROM posts WHERE message_id = ?',
     );
+     
     this.findByDayStmt = this.db.prepare('SELECT * FROM posts WHERE day = ?');
+     
     this.findMediaByDayStmt = this.db.prepare(
       'SELECT * FROM media_attachments WHERE post_day = ?',
     );
+     
     this.findByMessageIdStmt = this.db.prepare(
       'SELECT * FROM posts WHERE message_id = ?',
     );
+     
     this.maxDayStmt = this.db.prepare('SELECT MAX(day) as maxDay FROM posts');
+     
     this.rangeStmt = this.db.prepare(
       'SELECT day FROM posts WHERE day BETWEEN ? AND ? ORDER BY day ASC',
     );
+     
     this.postInsertStmt = this.db.prepare(
       'INSERT INTO posts (day, message_id, channel_id, user_id, timestamp, confirmed) VALUES (?, ?, ?, ?, ?, 1)',
     );
+     
     this.mediaInsertStmt = this.db.prepare(
       'INSERT INTO media_attachments (post_day, url) VALUES (?, ?)',
     );
@@ -109,6 +128,7 @@ export class PostRepository {
 
         if ('media' in post && Array.isArray(post.media)) {
           // This is a V2 post object. The type is already string[].
+           
           mediaUrls = post.media;
         } else {
           // This is a V1 post object. Collect and filter potential URLs.

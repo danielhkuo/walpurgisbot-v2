@@ -8,6 +8,7 @@ import { SessionRepository } from './database/sessionRepository';
 import { NotificationService } from './services/notificationService';
 import { ArchiveSessionManager } from './services/archiveSessionManager';
 import { DialogueService } from './services/dialogueService';
+import { FunService } from './services/funService';
 import type { Command } from './types/command';
 import type { MessageContextMenuCommand } from './types/contextMenuCommand';
 import { registerCommands, registerEvents } from './registry';
@@ -25,6 +26,7 @@ declare module 'discord.js' {
         notificationService: NotificationService;
         archiveSessionManager: ArchiveSessionManager;
         dialogueService: DialogueService;
+        funService: FunService;
         logger: typeof logger;
     }
 }
@@ -37,15 +39,16 @@ const client = new Client({
     ],
 });
 
-async function setupClient() {
+function setupClient() {
     client.logger = logger;
-    client.db = db as Database;
+    client.db = db;
     client.posts = new PostRepository(client.db);
     client.settings = new SettingsRepository(client.db);
     client.sessions = new SessionRepository(client.db);
     client.notificationService = new NotificationService(client, client.settings, client.posts);
     client.archiveSessionManager = new ArchiveSessionManager(client, client.posts, client.sessions);
     client.dialogueService = new DialogueService(client);
+    client.funService = new FunService(client);
     client.commands = new Collection();
     
     registerCommands(client);
@@ -56,7 +59,7 @@ async function main() {
     try {
         await runMigrations(db, logger);
 
-        await setupClient();
+        setupClient();
         
         await client.login(config.TOKEN);
     } catch (error) {

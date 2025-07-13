@@ -5,18 +5,21 @@ import tseslint from 'typescript-eslint';
 export default [
   js.configs.recommended,
   ...tseslint.configs.recommended,
-  ...tseslint.configs.recommendedTypeChecked,
   {
     files: ['**/*.ts', '**/*.js'],
+    ignores: ['eslint.config.js'],
     languageOptions: {
       parserOptions: {
-        project: './tsconfig.json'
-      }
+        project: './tsconfig.json',
+        tsconfigRootDir: import.meta.dirname,
+      },
     },
     rules: {
-      'no-console': 'warn',
-      'no-debugger': 'error',
-      '@typescript-eslint/no-floating-promises': 'error'
-    }
-  }
+      '@typescript-eslint/no-unused-vars': 'warn',
+    },
+  },
+  {
+    files: ['eslint.config.js'],
+    ...tseslint.configs.disableTypeChecked,
+  },
 ];

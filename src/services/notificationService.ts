@@ -29,6 +29,7 @@ export class NotificationService {
   private settingsRepo: SettingsRepository;
   private postRepo: PostRepository;
   private reminderJob: CronJob | null = null;
+  private walpurgisJob: CronJob | null = null;
   private settings: NotificationSettings | null = null;
 
   constructor(
@@ -63,8 +64,12 @@ export class NotificationService {
     this.settings = this.settingsRepo.getSettings();
 
     if (this.reminderJob) {
-      this.reminderJob.stop();
+      void this.reminderJob.stop();
       this.reminderJob = null;
+    }
+    if (this.walpurgisJob) {
+        void this.walpurgisJob.stop();
+        this.walpurgisJob = null;
     }
 
     this.scheduleJobs();
@@ -82,27 +87,28 @@ export class NotificationService {
       this.client.logger.info(
         'Daily reminder is disabled or not fully configured. Skipping schedule.',
       );
-      return;
+    } else {
+        const [hour, minute] = this.settings.reminder_time.split(':');
+        const cronTime = `${minute} ${hour} * * *`;
+
+        this.reminderJob = new CronJob(
+          cronTime,
+          () => { void this.runDailyReminderCheck(); },
+          null,
+          true,
+          this.settings.timezone,
+        );
+
+        this.client.logger.info({
+            cronTime,
+            timezone: this.settings.timezone,
+            nextRun: this.reminderJob.nextDate().toISO?.() ?? this.reminderJob.nextDate().toString()
+          },
+          `Daily reminder scheduled.`
+        );
     }
 
-    const [hour, minute] = this.settings.reminder_time.split(':');
-    const cronTime = `${minute} ${hour} * * *`;
-
-    this.reminderJob = new CronJob(
-      cronTime,
-      () => { void this.runDailyReminderCheck(); },
-      null,
-      true,
-      this.settings.timezone,
-    );
-
-    this.client.logger.info({
-        cronTime,
-        timezone: this.settings.timezone,
-        nextRun: this.reminderJob.nextDate().toISO?.() ?? this.reminderJob.nextDate().toString()
-      },
-      `Daily reminder scheduled.`
-    );
+    this.scheduleWalpurgisJob();
   }
   
   /**
@@ -222,5 +228,59 @@ export class NotificationService {
     this.settingsRepo.updateSettings({ last_reminder_check_timestamp: runTimestamp });
     this.settings = this.settingsRepo.getSettings(); // Refresh cache
     this.client.logger.info('Finished daily missing archive check.');
+  }
+
+  /**
+   * Schedules the annual Walpurgisnacht announcement.
+   */
+  private scheduleWalpurgisJob() {
+    const channelId = config.DEFAULT_CHANNEL_ID;
+    if (!channelId) {
+        this.client.logger.warn('Walpurgisnacht announcer disabled: DEFAULT_CHANNEL_ID is not set in config.');
+        return;
+    }
+    
+    // Run at 10:00 AM UTC every day.
+    const cronTime = '0 10 * * *'; 
+
+    this.walpurgisJob = new CronJob(
+        cronTime,
+        () => { void this.runWalpurgisCheck(channelId); },
+        null,
+        true,
+        'UTC' // Run check in UTC timezone to match Python logic
+    );
+
+    this.client.logger.info({
+        cronTime,
+        timezone: 'UTC',
+        nextRun: this.walpurgisJob.nextDate().toISO?.() ?? this.walpurgisJob.nextDate().toString()
+      },
+      `Walpurgisnacht announcer scheduled.`
+    );
+  }
+
+  /**
+   * Checks if it is April 30 and sends the Walpurgisnacht announcement.
+   * @param channelId The ID of the channel to send the announcement to.
+   */
+  private async runWalpurgisCheck(channelId: string) {
+    this.client.logger.debug('Running daily Walpurgisnacht check...');
+    const today = new Date(); // Cron ensures this is run in UTC context
+
+    // Check if it's April 30th (month is 0-indexed)
+    if (today.getUTCMonth() === 3 && today.getUTCDate() === 30) {
+        try {
+            const channel = await this.client.channels.fetch(channelId);
+            if (channel?.type === ChannelType.GuildText) {
+                this.client.logger.info(`It's Walpurgisnacht! Sending announcement to channel ${channelId}.`);
+                await channel.send("TONIGHT IS WALPURGIS!!!");
+            } else {
+                this.client.logger.warn(`Walpurgisnacht: Channel with ID ${channelId} not found or is not a text channel.`);
+            }
+        } catch (error) {
+            this.client.logger.error({ err: error, channelId }, 'Failed to send Walpurgisnacht announcement.');
+        }
+    }
   }
 }

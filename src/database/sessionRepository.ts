@@ -26,17 +26,26 @@ interface SessionRow {
 
 export class SessionRepository {
     private db: Database;
+     
     private getStmt: Statement;
+     
     private getByMessageIdStmt: Statement;
+     
     private upsertStmt: Statement;
+     
     private deleteStmt: Statement;
+     
     private findAllStmt: Statement;
+     
     private deleteExpiredStmt: Statement;
 
     constructor(db: Database) {
         this.db = db;
+         
         this.getStmt = this.db.prepare('SELECT * FROM archive_sessions WHERE user_id = ?');
+         
         this.getByMessageIdStmt = this.db.prepare('SELECT * FROM archive_sessions WHERE message_id = ?');
+         
         this.upsertStmt = this.db.prepare(
             `INSERT INTO archive_sessions (user_id, channel_id, message_id, media_urls, detected_days, confidence, expires_at)
              VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -46,11 +55,14 @@ export class SessionRepository {
                 media_urls = excluded.media_urls,
                 detected_days = excluded.detected_days,
                 confidence = excluded.confidence,
-                expires_at = excluded.expires_at`,
+                expires_at = excluded.expires_at`
         );
+         
         this.deleteStmt = this.db.prepare('DELETE FROM archive_sessions WHERE user_id = ?');
+         
         this.findAllStmt = this.db.prepare('SELECT * FROM archive_sessions');
-        this.deleteExpiredStmt = this.db.prepare('DELETE FROM archive_sessions WHERE expires_at < ?');
+         
+        this.deleteExpiredStmt = this.db.prepare('DELETE FROM archive_sessions WHERE expires_at <= ?');
     }
 
     private rowToData(row: SessionRow): SessionData {
@@ -77,7 +89,7 @@ export class SessionRepository {
 
     public findAll(): SessionData[] {
         const rows = this.findAllStmt.all() as SessionRow[];
-        return rows.map(this.rowToData);
+        return rows.map((row) => this.rowToData(row));
     }
 
     public upsert(data: SessionData): void {

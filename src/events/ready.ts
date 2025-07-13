@@ -12,7 +12,7 @@ export const event: Event<'ready'> = {
         }
         client.logger.info(`Ready! Logged in as ${client.user.tag}`);
         try {
-            await client.dialogueService.initialize();
+            client.dialogueService.initialize();
             // Initialize all services that need to run startup logic.
             await client.notificationService.initialize();
             client.archiveSessionManager.initialize();
