@@ -10,6 +10,12 @@ import {
 import type { ChatInputCommandInteraction, Client } from 'discord.js';
 import type { Command } from '../types/command';
 
+// Constants for layout
+const COLUMNS = 2;
+const ROWS_PER_COLUMN = 25;
+const DAYS_PER_PAGE = ROWS_PER_COLUMN * COLUMNS; // Display 50 days per page (2 columns * 25 rows)
+const COLUMN_SPACING = 4; // Number of spaces between columns
+
 export const command: Command = {
     data: new SlashCommandBuilder()
         .setName('status')
@@ -32,24 +38,82 @@ export const command: Command = {
 
         const archivedDays = new Set(client.posts.getArchivedDaysInRange(start, end));
 
-        const DAYS_PER_PAGE = 25;
-        const totalPages = Math.ceil((end - start + 1) / DAYS_PER_PAGE);
+        const totalDays = end - start + 1;
+        const totalPages = Math.ceil(totalDays / DAYS_PER_PAGE);
 
         const generateEmbed = (page: number) => {
             const pageStartDay = start + page * DAYS_PER_PAGE;
             const pageEndDay = Math.min(start + (page + 1) * DAYS_PER_PAGE - 1, end);
 
-            const statuses: string[] = [];
+            const daysOnPage: number[] = [];
             for (let day = pageStartDay; day <= pageEndDay; day++) {
-                const status = archivedDays.has(day) ? '✅' : '❌';
-                statuses.push(client.dialogueService.get('status.embed.dayStatus', { day, status }));
+                daysOnPage.push(day);
             }
 
-            const pageContent = statuses.join('\n') || client.dialogueService.get('status.embed.noData');
+            if (daysOnPage.length === 0) {
+                return new EmbedBuilder()
+                    .setTitle(client.dialogueService.get('status.embed.title', { start, end }))
+                    .setDescription(client.dialogueService.get('status.embed.noData'))
+                    .setColor('#5865F2')
+                    .setFooter({ text: client.dialogueService.get('status.embed.footer', { page: page + 1, totalPages }) });
+            }
+
+            // Calculate the max length for a single status line to ensure column alignment.
+            // This accounts for the longest day number (from 'end') and the '✅'/'❌' emoji.
+            const longestDayNumStrLength = String(end).length;
+            const dummyDay = '0'.repeat(longestDayNumStrLength); // Use a dummy string of same length as longest day number
+            const dummyStatusEmoji = '✅'; // Emojis are typically 2 characters wide for length calculations
+            
+            // Get the length of the longest possible line based on the dialogue string and max day number length
+            const longestPossibleLine = client.dialogueService.get('status.embed.dayStatus', { day: dummyDay, status: dummyStatusEmoji });
+            const maxLineLength = longestPossibleLine.length;
+
+            // Prepare columns to store formatted day status strings
+            const columns: string[][] = Array(COLUMNS).fill(null).map(() => []);
+
+            // Populate columns with padded status lines
+            for (let i = 0; i < daysOnPage.length; i++) {
+                const day = daysOnPage[i]!;
+                const statusEmoji = archivedDays.has(day) ? '✅' : '❌';
+                const dayStatusLine = client.dialogueService.get('status.embed.dayStatus', { day, status: statusEmoji });
+                
+                // Pad the current line to the calculated maximum length
+                const paddedDayStatusLine = dayStatusLine.padEnd(maxLineLength, ' ');
+
+                const columnIndex = Math.floor(i / ROWS_PER_COLUMN);
+                if (columnIndex < COLUMNS) { // Ensure we don't go out of bounds for partial last pages
+                    columns[columnIndex]!.push(paddedDayStatusLine);
+                }
+            }
+
+            // Combine columns row by row to form the final page content
+            const pageContentRows: string[] = [];
+            for (let r = 0; r < ROWS_PER_COLUMN; r++) {
+                let rowString = '';
+                for (let c = 0; c < COLUMNS; c++) {
+                    const line = columns[c]?.[r]; // Get line from the current column and row
+                    if (line !== undefined) {
+                        rowString += line;
+                    } else {
+                        // If a column is shorter than ROWS_PER_COLUMN, fill empty spots with spaces to maintain alignment
+                        rowString += ' '.repeat(maxLineLength);
+                    }
+                    // Add spacing between columns, but not after the last column
+                    if (c < COLUMNS - 1) {
+                        rowString += ' '.repeat(COLUMN_SPACING);
+                    }
+                }
+                // Only add the row if it contains actual content (not just trailing spaces from shorter columns)
+                if (rowString.trim().length > 0) {
+                    pageContentRows.push(rowString);
+                }
+            }
+
+            const pageContent = pageContentRows.join('\n') || client.dialogueService.get('status.embed.noData');
 
             return new EmbedBuilder()
                 .setTitle(client.dialogueService.get('status.embed.title', { start, end }))
-                .setDescription(pageContent)
+                .setDescription(`\`\`\`\n${pageContent}\n\`\`\``) // Wrap in code block for monospace font
                 .setColor('#5865F2')
                 .setFooter({ text: client.dialogueService.get('status.embed.footer', { page: page + 1, totalPages }) });
         };
